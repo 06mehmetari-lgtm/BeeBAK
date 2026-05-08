@@ -1,4 +1,5 @@
 using System;
+using BeeBAK.Ecommerce;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.Uow;
 using Volo.Abp.AuditLogging.EntityFrameworkCore;
@@ -47,6 +48,7 @@ public class BeeBAKEntityFrameworkCoreModule : AbpModule
                 /* Remove "includeAllEntities: true" to create
                  * default repositories only for aggregate roots */
             options.AddDefaultRepositories(includeAllEntities: true);
+            options.AddRepository<EcProduct, Ecommerce.EcProductRepository>();
         });
 
         if (AbpStudioAnalyzeHelper.IsInAnalyzeMode)
