@@ -1,0 +1,109 @@
+{
+  "template": "app",
+  "imports": {
+    "Volo.Abp.LeptonXLiteTheme": {
+      "version": "5.3.0",
+      "isInstalled": true,
+      "creationTime": "05/08/2026 17:35:24 +00:00"
+    },
+    "Volo.Abp.Account": {
+      "version": "10.3.0",
+      "isInstalled": true,
+      "creationTime": "05/08/2026 17:35:24 +00:00"
+    },
+    "Volo.Abp.OpenIddict": {
+      "version": "10.3.0",
+      "isInstalled": true,
+      "creationTime": "05/08/2026 17:35:24 +00:00"
+    },
+    "Volo.Abp.Identity": {
+      "version": "10.3.0",
+      "isInstalled": true,
+      "creationTime": "05/08/2026 17:35:24 +00:00"
+    },
+    "Volo.Abp.TenantManagement": {
+      "version": "10.3.0",
+      "isInstalled": true,
+      "creationTime": "05/08/2026 17:35:24 +00:00"
+    },
+    "Volo.Abp.SettingManagement": {
+      "version": "10.3.0",
+      "isInstalled": true,
+      "creationTime": "05/08/2026 17:35:24 +00:00"
+    },
+    "Volo.Abp.PermissionManagement": {
+      "version": "10.3.0",
+      "isInstalled": true,
+      "creationTime": "05/08/2026 17:35:24 +00:00"
+    },
+    "Volo.Abp.FeatureManagement": {
+      "version": "10.3.0",
+      "isInstalled": true,
+      "creationTime": "05/08/2026 17:35:24 +00:00"
+    }
+  },
+  "folders": {
+    "items": {
+      "src": {},
+      "test": {}
+    }
+  },
+  "packages": {
+    "BeeBAK.Application": {
+      "path": "src/BeeBAK.Application/BeeBAK.Application.abppkg",
+      "folder": "src"
+    },
+    "BeeBAK.Application.Tests": {
+      "path": "test/BeeBAK.Application.Tests/BeeBAK.Application.Tests.abppkg",
+      "folder": "test"
+    },
+    "BeeBAK.Domain.Shared": {
+      "path": "src/BeeBAK.Domain.Shared/BeeBAK.Domain.Shared.abppkg",
+      "folder": "src"
+    },
+    "BeeBAK.Application.Contracts": {
+      "path": "src/BeeBAK.Application.Contracts/BeeBAK.Application.Contracts.abppkg",
+      "folder": "src"
+    },
+    "BeeBAK.HttpApi": {
+      "path": "src/BeeBAK.HttpApi/BeeBAK.HttpApi.abppkg",
+      "folder": "src"
+    },
+    "BeeBAK.HttpApi.Client": {
+      "path": "src/BeeBAK.HttpApi.Client/BeeBAK.HttpApi.Client.abppkg",
+      "folder": "src"
+    },
+    "BeeBAK.EntityFrameworkCore.Tests": {
+      "path": "test/BeeBAK.EntityFrameworkCore.Tests/BeeBAK.EntityFrameworkCore.Tests.abppkg",
+      "folder": "test"
+    },
+    "BeeBAK.EntityFrameworkCore": {
+      "path": "src/BeeBAK.EntityFrameworkCore/BeeBAK.EntityFrameworkCore.abppkg",
+      "folder": "src"
+    },
+    "BeeBAK.TestBase": {
+      "path": "test/BeeBAK.TestBase/BeeBAK.TestBase.abppkg",
+      "folder": "test"
+    },
+    "BeeBAK.Domain.Tests": {
+      "path": "test/BeeBAK.Domain.Tests/BeeBAK.Domain.Tests.abppkg",
+      "folder": "test"
+    },
+    "BeeBAK.HttpApi.Client.ConsoleTestApp": {
+      "path": "test/BeeBAK.HttpApi.Client.ConsoleTestApp/BeeBAK.HttpApi.Client.ConsoleTestApp.abppkg",
+      "folder": "test"
+    },
+    "BeeBAK.DbMigrator": {
+      "path": "src/BeeBAK.DbMigrator/BeeBAK.DbMigrator.abppkg",
+      "folder": "src"
+    },
+    "BeeBAK.HttpApi.Host": {
+      "path": "src/BeeBAK.HttpApi.Host/BeeBAK.HttpApi.Host.abppkg",
+      "folder": "src"
+    },
+    "BeeBAK.Domain": {
+      "path": "src/BeeBAK.Domain/BeeBAK.Domain.abppkg",
+      "folder": "src"
+    }
+  }
+}

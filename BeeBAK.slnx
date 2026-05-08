@@ -1,0 +1,23 @@
+<Solution>
+    <Configurations>
+        <Platform Name="Any CPU" />
+    </Configurations>
+    <Folder Name="/src/">
+        <Project Path="src/BeeBAK.Domain/BeeBAK.Domain.csproj" />
+        <Project Path="src/BeeBAK.Application/BeeBAK.Application.csproj" />
+        <Project Path="src/BeeBAK.EntityFrameworkCore/BeeBAK.EntityFrameworkCore.csproj" />
+        <Project Path="src/BeeBAK.Domain.Shared/BeeBAK.Domain.Shared.csproj" />
+        <Project Path="src/BeeBAK.Application.Contracts/BeeBAK.Application.Contracts.csproj" />
+        <Project Path="src/BeeBAK.HttpApi/BeeBAK.HttpApi.csproj" />
+        <Project Path="src/BeeBAK.HttpApi.Client/BeeBAK.HttpApi.Client.csproj" />
+        <Project Path="src/BeeBAK.DbMigrator/BeeBAK.DbMigrator.csproj" />
+        <Project Path="src/BeeBAK.HttpApi.Host/BeeBAK.HttpApi.Host.csproj" />
+    </Folder>
+    <Folder Name="/test/">
+        <Project Path="test/BeeBAK.Application.Tests/BeeBAK.Application.Tests.csproj" />
+        <Project Path="test/BeeBAK.EntityFrameworkCore.Tests/BeeBAK.EntityFrameworkCore.Tests.csproj" />
+        <Project Path="test/BeeBAK.TestBase/BeeBAK.TestBase.csproj" />
+        <Project Path="test/BeeBAK.Domain.Tests/BeeBAK.Domain.Tests.csproj" />
+        <Project Path="test/BeeBAK.HttpApi.Client.ConsoleTestApp/BeeBAK.HttpApi.Client.ConsoleTestApp.csproj" />
+    </Folder>
+</Solution>

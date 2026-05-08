@@ -1,0 +1,17 @@
+# PostgreSQL — API ve Angular yerelde çalışırken: localhost:5432
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: beebak-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "11051994"
+      POSTGRES_DB: BeeBAK
+    volumes:
+      - beebak_pgdata:/var/lib/postgresql/data
+
+volumes:
+  beebak_pgdata:
