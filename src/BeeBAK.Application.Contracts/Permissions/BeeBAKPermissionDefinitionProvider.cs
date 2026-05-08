@@ -11,8 +11,10 @@ public class BeeBAKPermissionDefinitionProvider : PermissionDefinitionProvider
     {
         var myGroup = context.AddGroup(BeeBAKPermissions.GroupName);
 
-        //Define your own permissions here. Example:
-        //myGroup.AddPermission(BeeBAKPermissions.MyPermission1, L("Permission:MyPermission1"));
+        var trendyol = myGroup.AddPermission(BeeBAKPermissions.Trendyol.Default, L("Permission:Trendyol"));
+        trendyol.AddChild(BeeBAKPermissions.Trendyol.Sync, L("Permission:Trendyol.Sync"));
+
+        myGroup.AddPermission(BeeBAKPermissions.Hepsiburada.Default, L("Permission:Hepsiburada"));
     }
 
     private static LocalizableString L(string name)
