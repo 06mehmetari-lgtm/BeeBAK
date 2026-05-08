@@ -17,6 +17,14 @@ public static class EcommerceDbContextModelCreatingExtensions
             b.HasOne(x => x.Parent).WithMany(x => x.Children).HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
         });
 
+        builder.Entity<EcTrendyolNavSectionTracker>(b =>
+        {
+            b.ToTable(BeeBAKConsts.DbTablePrefix + "EcTrendyolNavSectionTrackers", BeeBAKConsts.DbSchema);
+            b.ConfigureByConvention();
+            b.Property(x => x.ExternalCategoryId).IsRequired().HasMaxLength(160);
+            b.HasIndex(x => x.ExternalCategoryId).IsUnique();
+        });
+
         builder.Entity<EcProduct>(b =>
         {
             b.ToTable(BeeBAKConsts.DbTablePrefix + "EcProducts", BeeBAKConsts.DbSchema);

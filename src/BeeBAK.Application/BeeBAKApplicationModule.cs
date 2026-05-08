@@ -28,8 +28,9 @@ public class BeeBAKApplicationModule : AbpModule
 {
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
+        var configuration = context.Services.GetConfiguration();
         context.Services.Configure<TrendyolClientOptions>(
-            context.Configuration.GetSection(TrendyolClientOptions.SectionName));
+            configuration.GetSection(TrendyolClientOptions.SectionName));
 
         context.Services.AddHttpClient(TrendyolSearchHttpClient.HttpClientName, (sp, client) =>
         {

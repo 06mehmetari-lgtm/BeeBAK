@@ -7,7 +7,11 @@ public static class BeeBAKPermissions
     public static class Trendyol
     {
         public const string Default = GroupName + ".Trendyol";
+
         public const string Sync = Default + ".Sync";
+
+        /// <summary>Alt navigasyondan kök kategori meta verisini senkronlar.</summary>
+        public const string SyncNavigationCatalog = Default + ".SyncNavigationCatalog";
     }
 
     public static class Hepsiburada

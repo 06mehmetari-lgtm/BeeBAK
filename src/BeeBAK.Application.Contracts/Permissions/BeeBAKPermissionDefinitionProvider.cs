@@ -13,6 +13,7 @@ public class BeeBAKPermissionDefinitionProvider : PermissionDefinitionProvider
 
         var trendyol = myGroup.AddPermission(BeeBAKPermissions.Trendyol.Default, L("Permission:Trendyol"));
         trendyol.AddChild(BeeBAKPermissions.Trendyol.Sync, L("Permission:Trendyol.Sync"));
+        trendyol.AddChild(BeeBAKPermissions.Trendyol.SyncNavigationCatalog, L("Permission:Trendyol.SyncNavigationCatalog"));
 
         myGroup.AddPermission(BeeBAKPermissions.Hepsiburada.Default, L("Permission:Hepsiburada"));
     }

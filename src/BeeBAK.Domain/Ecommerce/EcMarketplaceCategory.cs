@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using BeeBAK.Marketplaces;
+using Volo.Abp;
 using Volo.Abp.Domain.Entities.Auditing;
 
 namespace BeeBAK.Ecommerce;
@@ -20,6 +21,12 @@ public class EcMarketplaceCategory : FullAuditedAggregateRoot<Guid>
     public string? Slug { get; protected set; }
 
     public string? CategoryUrl { get; protected set; }
+
+    /// <summary>Trendyol alt navigasyon sırası (senkron ile güncellenir).</summary>
+    public int? NavigationDisplayOrder { get; protected set; }
+
+    /// <summary>Son Trendyol navigasyon HTML senkronu (UTC).</summary>
+    public DateTime? LastNavigationSyncUtc { get; protected set; }
 
     /// <summary>Ham özellikler / breadcrumb / ek meta.</summary>
     public string? ExtraAttributesJson { get; protected set; }
@@ -52,5 +59,20 @@ public class EcMarketplaceCategory : FullAuditedAggregateRoot<Guid>
         Slug = slug;
         CategoryUrl = categoryUrl;
         ExtraAttributesJson = extraAttributesJson;
+    }
+
+    /// <summary>Trendyol alt navigasyonundan gelen güncel başlık, slug ve URL.</summary>
+    public void ApplyTrendyolNavigationSnapshot(
+        string name,
+        string? slug,
+        string categoryUrl,
+        int? navigationDisplayOrder,
+        DateTime utcNow)
+    {
+        Name = Check.NotNullOrWhiteSpace(name, nameof(name));
+        Slug = slug;
+        CategoryUrl = categoryUrl;
+        NavigationDisplayOrder = navigationDisplayOrder;
+        LastNavigationSyncUtc = utcNow;
     }
 }

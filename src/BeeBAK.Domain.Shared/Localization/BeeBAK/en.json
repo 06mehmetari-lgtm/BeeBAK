@@ -7,6 +7,8 @@
     "Welcome": "Welcome",
     "Permission:Trendyol": "Trendyol",
     "Permission:Trendyol.Sync": "Sync Trendyol listings",
+    "Permission:Trendyol.SyncNavigationCatalog": "Sync Trendyol navigation categories",
+    "TrendyolNavigationHtmlEmpty": "Trendyol navigation HTML was empty.",
     "TrendyolSearchQueryMissing": "Provide a search query or a Trendyol marketplace category id.",
     "TrendyolCategoryNotFound": "The marketplace category was not found.",
     "TrendyolCategoryWrongMarketplace": "The category does not belong to Trendyol.",
