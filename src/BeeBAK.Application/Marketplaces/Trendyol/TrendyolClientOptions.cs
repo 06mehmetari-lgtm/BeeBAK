@@ -9,6 +9,9 @@ public class TrendyolClientOptions
     /// <summary>Site origin, e.g. https://www.trendyol.com</summary>
     public string BaseUrl { get; set; } = "https://www.trendyol.com";
 
+    /// <summary>Ana sayfa veya alt navigasyon HTML'i için yol (ör. /).</summary>
+    public string NavigationHtmlPath { get; set; } = "/";
+
     /// <summary>Path only, e.g. /api/sr/search</summary>
     public string SearchApiPath { get; set; } = "/api/sr/search";
 

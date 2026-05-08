@@ -40,6 +40,8 @@
     "ChoosePhoto": "Fotoğraf Seç",
     "Permission:Trendyol": "Trendyol",
     "Permission:Trendyol.Sync": "Trendyol liste senkronu",
+    "Permission:Trendyol.SyncNavigationCatalog": "Trendyol alt menü kategorilerini senkronla",
+    "TrendyolNavigationHtmlEmpty": "Trendyol navigasyon HTML'i boş döndü.",
     "TrendyolSearchQueryMissing": "Arama metni veya Trendyol pazaryeri kategori kimliği girin.",
     "TrendyolCategoryNotFound": "Pazaryeri kategorisi bulunamadı.",
     "TrendyolCategoryWrongMarketplace": "Bu kategori Trendyol için değil.",

@@ -3,6 +3,7 @@ using System;
 using BeeBAK.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Volo.Abp.EntityFrameworkCore;
@@ -12,9 +13,11 @@ using Volo.Abp.EntityFrameworkCore;
 namespace BeeBAK.Migrations
 {
     [DbContext(typeof(BeeBAKDbContext))]
-    partial class BeeBAKDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260508184208_Added_EcTrendyolNavTracker_And_NavigationColumns")]
+    partial class Added_EcTrendyolNavTracker_And_NavigationColumns
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

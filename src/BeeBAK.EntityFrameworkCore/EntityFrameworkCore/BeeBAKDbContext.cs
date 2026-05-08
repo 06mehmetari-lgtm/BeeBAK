@@ -30,6 +30,7 @@ public class BeeBAKDbContext :
     /* Add DbSet properties for your Aggregate Roots / Entities here. */
 
     public DbSet<EcMarketplaceCategory> EcMarketplaceCategories { get; set; }
+    public DbSet<EcTrendyolNavSectionTracker> EcTrendyolNavSectionTrackers { get; set; }
     public DbSet<EcProduct> EcProducts { get; set; }
     public DbSet<EcProductDetail> EcProductDetails { get; set; }
     public DbSet<EcProductImage> EcProductImages { get; set; }
