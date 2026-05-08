@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using BeeBAK.Marketplaces;
+using Volo.Abp;
 using Volo.Abp.Domain.Entities.Auditing;
 
 namespace BeeBAK.Ecommerce;
@@ -67,4 +68,24 @@ public class EcProduct : FullAuditedAggregateRoot<Guid>
     public void TouchSync(DateTime utcNow) => LastSyncedUtc = utcNow;
 
     public void SetActive(bool active) => IsActive = active;
+
+    /// <summary>Updates listing fields after a marketplace sync (does not touch snapshots).</summary>
+    public void ApplyListingSync(
+        string title,
+        string productUrl,
+        Guid? primaryCategoryId = null,
+        string? brandName = null,
+        string? merchantExternalId = null)
+    {
+        Title = Check.NotNullOrWhiteSpace(title, nameof(title));
+        ProductUrl = Check.NotNullOrWhiteSpace(productUrl, nameof(productUrl));
+        PrimaryCategoryId = primaryCategoryId;
+        BrandName = brandName;
+        MerchantExternalId = merchantExternalId;
+    }
+
+    public void AddPriceSnapshot(EcProductPriceSnapshot snapshot)
+    {
+        PriceSnapshots.Add(Check.NotNull(snapshot, nameof(snapshot)));
+    }
 }

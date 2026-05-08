@@ -10,12 +10,37 @@ export const APP_ROUTE_PROVIDER = [
 function configureRoutes() {
   const routes = inject(RoutesService);
   routes.add([
-      {
-        path: '/',
-        name: '::Menu:Home',
-        iconClass: 'fas fa-home',
-        order: 1,
-        layout: eLayoutType.application,
-      },
+    {
+      path: '/',
+      name: '::Menu:Home',
+      iconClass: 'fas fa-home',
+      order: 1,
+      layout: eLayoutType.application,
+    },
+    {
+      path: '/marketplaces',
+      name: '::Menu:Marketplaces',
+      iconClass: 'fas fa-store',
+      order: 10,
+      layout: eLayoutType.application,
+    },
+    {
+      path: '/marketplaces/trendyol/products',
+      name: '::Menu:MarketplacesTrendyol',
+      parentName: '::Menu:Marketplaces',
+      layout: eLayoutType.application,
+      iconClass: 'fas fa-shopping-bag',
+      order: 1,
+      requiredPolicy: 'BeeBAK.Trendyol',
+    },
+    {
+      path: '/marketplaces/hepsiburada',
+      name: '::Menu:MarketplacesHepsiburada',
+      parentName: '::Menu:Marketplaces',
+      layout: eLayoutType.application,
+      iconClass: 'fas fa-truck',
+      order: 2,
+      requiredPolicy: 'BeeBAK.Hepsiburada',
+    },
   ]);
 }
