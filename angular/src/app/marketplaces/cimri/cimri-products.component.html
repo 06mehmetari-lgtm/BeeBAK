@@ -115,6 +115,9 @@
           <div class="product__meta">
             <span *ngIf="product.brandName" class="brand">{{ product.brandName }}</span>
             <span *ngIf="product.categoryPath" class="cat">{{ product.categoryPath }}</span>
+            <span class="cimri-id" *ngIf="product.contentId" [title]="'Cimri ID'">
+              {{ '::CimriContentIdLabel' | abpLocalization }}: <code>{{ product.contentId }}</code>
+            </span>
           </div>
           <div class="product__price-row">
             <span class="price">
@@ -169,6 +172,7 @@
             <th>Shipping</th>
             <th>Promotion</th>
             <th>Updated</th>
+            <th>{{ '::CimriColumnMerchantProductId' | abpLocalization }}</th>
             <th></th>
           </tr>
         </thead>
@@ -203,15 +207,30 @@
             <td>{{ offer.shippingText || '—' }}</td>
             <td>{{ offer.promotionText || '—' }}</td>
             <td>{{ offer.lastUpdatedText || '—' }}</td>
-            <td>
+            <td class="merchant-pid-cell">
+              <code *ngIf="offer.merchantProductId; else noPid">{{ offer.merchantProductId }}</code>
+              <ng-template #noPid>—</ng-template>
+            </td>
+            <td class="offer-actions-cell">
               <a
-                *ngIf="offer.offerUrl"
+                *ngIf="offer.merchantProductUrl"
+                [href]="offer.merchantProductUrl"
+                target="_blank"
+                rel="noopener"
+                class="btn btn-primary btn-sm"
+                [title]="offer.merchantProductUrl"
+              >
+                {{ '::CimriOpenAtMerchant' | abpLocalization }}
+              </a>
+              <a
+                *ngIf="!offer.merchantProductUrl && offer.offerUrl"
                 [href]="offer.offerUrl"
                 target="_blank"
                 rel="noopener"
-                class="btn btn-link"
-                >Open</a
+                class="btn btn-link btn-sm"
               >
+                {{ '::CimriOpenViaCimri' | abpLocalization }}
+              </a>
             </td>
           </tr>
         </tbody>

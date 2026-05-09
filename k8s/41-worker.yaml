@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: beebak-worker
+  namespace: beebak
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: beebak-worker
+  template:
+    metadata:
+      labels:
+        app: beebak-worker
+    spec:
+      containers:
+        - name: worker
+          image: beebak/worker:latest
+          imagePullPolicy: Never
+          env:
+            - name: DOTNET_ENVIRONMENT
+              value: "Production"
+            - name: ConnectionStrings__Default
+              valueFrom:
+                secretKeyRef:
+                  name: beebak-secrets
+                  key: connectionString
+            - name: Redis__Configuration
+              valueFrom:
+                secretKeyRef:
+                  name: beebak-secrets
+                  key: redisConfig
+            - name: RabbitMq__Connections__Default__HostName
+              value: "rabbitmq"
+            - name: RabbitMq__Connections__Default__UserName
+              valueFrom:
+                secretKeyRef:
+                  name: beebak-secrets
+                  key: rabbitUser
+            - name: RabbitMq__Connections__Default__Password
+              valueFrom:
+                secretKeyRef:
+                  name: beebak-secrets
+                  key: rabbitPassword
+            - name: BackgroundJobs__IsJobExecutionEnabled
+              value: "true"
+            - name: Cimri__SeleniumGridUrl
+              value: "http://selenium-hub:4444/wd/hub"
+            - name: Cimri__BlockImages
+              value: "true"
+            - name: Cimri__BlockFonts
+              value: "true"
+            - name: Cimri__UseQueue
+              value: "true"
+            - name: Cimri__DedupTtlSeconds
+              value: "21600"
+            - name: Cimri__WorkerConcurrency
+              value: "4"
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "750m"
+              memory: "768Mi"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: beebak-worker-hpa
+  namespace: beebak
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: beebak-worker
+  minReplicas: 3
+  maxReplicas: 50
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+

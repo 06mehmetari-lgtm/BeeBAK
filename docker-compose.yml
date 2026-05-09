@@ -1,17 +1,179 @@
-# PostgreSQL — API ve Angular yerelde çalışırken: localhost:5432
 services:
   postgres:
     image: postgres:16-alpine
     container_name: beebak-postgres
     restart: unless-stopped
+    environment:
+      POSTGRES_DB: BeeBAK
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 11051994
+    volumes:
+      - beebak_pg:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d BeeBAK"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: beebak-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: beebak-rabbitmq
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: "11051994"
-      POSTGRES_DB: BeeBAK
-    volumes:
-      - beebak_pgdata:/var/lib/postgresql/data
+      RABBITMQ_DEFAULT_USER: beebak
+      RABBITMQ_DEFAULT_PASS: beebak
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  selenium-hub:
+    image: selenium/hub:4.27.0
+    container_name: beebak-selenium-hub
+    restart: unless-stopped
+    environment:
+      SE_NODE_MAX_SESSIONS: "1"
+      GRID_NEW_SESSION_WAIT_TIMEOUT: "60000"
+      GRID_BROWSER_TIMEOUT: "120"
+      GRID_TIMEOUT: "300"
+    ports:
+      - "4442:4442"
+      - "4443:4443"
+      - "4444:4444"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:4444/wd/hub/status || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  chrome-node:
+    image: selenium/node-chrome:4.27.0
+    restart: unless-stopped
+    shm_size: 1gb
+    depends_on:
+      selenium-hub:
+        condition: service_healthy
+    environment:
+      SE_EVENT_BUS_HOST: selenium-hub
+      SE_EVENT_BUS_PUBLISH_PORT: "4442"
+      SE_EVENT_BUS_SUBSCRIBE_PORT: "4443"
+      SE_NODE_MAX_SESSIONS: "2"
+      SE_NODE_OVERRIDE_MAX_SESSIONS: "true"
+      SE_NODE_SESSION_TIMEOUT: "180"
+      SE_VNC_NO_PASSWORD: "1"
+      SE_OPTS: "--detect-drivers true"
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 1500M
+
+  dbmigrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.dbmigrator
+    container_name: beebak-dbmigrator
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=BeeBAK;Username=postgres;Password=11051994"
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: beebak-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      dbmigrator:
+        condition: service_completed_successfully
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Production"
+      ASPNETCORE_URLS: "http://+:8080"
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=BeeBAK;Username=postgres;Password=11051994"
+      Redis__Configuration: "redis:6379"
+      RabbitMq__Connections__Default__HostName: "rabbitmq"
+      RabbitMq__Connections__Default__Port: "5672"
+      RabbitMq__Connections__Default__UserName: "beebak"
+      RabbitMq__Connections__Default__Password: "beebak"
+      BackgroundJobs__IsJobExecutionEnabled: "false"
+      App__SelfUrl: "http://localhost:44381"
+      App__CorsOrigins: "http://localhost:4200,https://localhost:4200"
+      App__RedirectAllowedUrls: "http://localhost:4200"
+      AuthServer__Authority: "http://localhost:44381"
+      AuthServer__RequireHttpsMetadata: "false"
+      AuthServer__UseDevelopmentCertificate: "true"
+      App__HealthUiCheckUrl: "http://localhost:8080/health-status"
+    ports:
+      - "44381:8080"
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      selenium-hub:
+        condition: service_healthy
+      dbmigrator:
+        condition: service_completed_successfully
+    environment:
+      DOTNET_ENVIRONMENT: "Production"
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=BeeBAK;Username=postgres;Password=11051994"
+      Redis__Configuration: "redis:6379"
+      RabbitMq__Connections__Default__HostName: "rabbitmq"
+      RabbitMq__Connections__Default__Port: "5672"
+      RabbitMq__Connections__Default__UserName: "beebak"
+      RabbitMq__Connections__Default__Password: "beebak"
+      BackgroundJobs__IsJobExecutionEnabled: "true"
+      Cimri__SeleniumGridUrl: "http://selenium-hub:4444/wd/hub"
+      Cimri__BlockImages: "true"
+      Cimri__BlockFonts: "true"
+      Cimri__UseQueue: "true"
+      Cimri__DedupTtlSeconds: "21600"
+      Cimri__WorkerConcurrency: "2"
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 800M
 
 volumes:
-  beebak_pgdata:
+  beebak_pg:

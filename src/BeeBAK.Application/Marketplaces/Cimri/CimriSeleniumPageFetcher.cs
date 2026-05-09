@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
+using OpenQA.Selenium.Remote;
 using Volo.Abp.DependencyInjection;
 
 namespace BeeBAK.Marketplaces.Cimri;
@@ -74,6 +75,20 @@ public class CimriSeleniumPageFetcher : ITransientDependency
         CimriClientOptions options,
         CancellationToken cancellationToken = default)
     {
+        return TryGetProductDetailAsync(absoluteProductUrl, expandAllOffers, options, cancellationToken)
+            .ContinueWith(t => t.Result?.Html, cancellationToken);
+    }
+
+    /// <summary>
+    /// Ürün detay sayfasını açar ve hem rendered HTML'i hem de teklif kartlarındaki tıklama akışından
+    /// JS shim'iyle yakalanmış mağaza redirect URL'lerini (sıraya göre) döndürür.
+    /// </summary>
+    public Task<CimriProductDetailFetchResult?> TryGetProductDetailAsync(
+        string absoluteProductUrl,
+        bool expandAllOffers,
+        CimriClientOptions options,
+        CancellationToken cancellationToken = default)
+    {
         return Task.Run(
             () => RunWithDriver(
                 options,
@@ -90,10 +105,105 @@ public class CimriSeleniumPageFetcher : ITransientDependency
                     }
 
                     cancellationToken.ThrowIfCancellationRequested();
-                    return driver.PageSource;
+                    var capturedOfferUrls = TryCaptureOfferRedirectUrls(driver);
+                    var html = driver.PageSource;
+                    return new CimriProductDetailFetchResult
+                    {
+                        Html = html,
+                        CapturedOfferUrls = capturedOfferUrls,
+                    };
                 },
                 cancellationToken),
             cancellationToken);
+    }
+
+    /// <summary>
+    /// Teklif kartlarındaki ".nzsL3" tıklama butonlarına basıp window.open / window.location çağrılarından
+    /// mağaza yönlendirme URL'lerini hasat eder. Yeni sekme açılmaz; orijinal navigasyon iptal edilir.
+    /// </summary>
+    private List<string> TryCaptureOfferRedirectUrls(IWebDriver driver)
+    {
+        var urls = new List<string>();
+        if (driver is not IJavaScriptExecutor js)
+        {
+            return urls;
+        }
+
+        const string script = @"
+            const captured = [];
+            const origOpen = window.open;
+            const origAssign = window.location.assign && window.location.assign.bind(window.location);
+            const origReplace = window.location.replace && window.location.replace.bind(window.location);
+            try {
+                window.open = function(u){ if (u) captured.push(String(u)); return null; };
+                try { window.location.assign = function(u){ if (u) captured.push(String(u)); }; } catch (e) {}
+                try { window.location.replace = function(u){ if (u) captured.push(String(u)); }; } catch (e) {}
+
+                const blockNav = (e) => { e.preventDefault(); e.stopImmediatePropagation(); };
+                window.addEventListener('beforeunload', blockNav, true);
+
+                const hijackAnchorClick = (a, list) => {
+                    const href = a.getAttribute && a.getAttribute('href');
+                    if (href) list.push(href);
+                };
+                document.addEventListener('click', function(ev){
+                    const a = ev.target && ev.target.closest && ev.target.closest('a[href]');
+                    if (a) {
+                        ev.preventDefault();
+                        ev.stopImmediatePropagation();
+                        const href = a.getAttribute('href');
+                        if (href) captured.push(href);
+                    }
+                }, true);
+
+                const cards = document.querySelectorAll('section#fiyatlar div.o1fRW, [data-offer]');
+                cards.forEach((card, idx) => {
+                    let target =
+                        card.querySelector('button.nzsL3') ||
+                        card.querySelector('button[aria-label=""teklif kart\u0131 linki""]') ||
+                        card.querySelector('a[href]') ||
+                        card.querySelector('button');
+                    if (!target) { captured.push(''); return; }
+                    const before = captured.length;
+                    try { target.click(); } catch (e) {}
+                    if (captured.length === before) {
+                        // tıklama sonrası bir şey yakalayamadıysak, kart üstündeki tıklama izleme
+                        // anchor varsa onu hijack et; yoksa boş bırak.
+                        const a = card.querySelector('a[href]');
+                        if (a) hijackAnchorClick(a, captured);
+                        else captured.push('');
+                    } else {
+                        // birden fazla URL yakalandıysa son yakalananı tek kart için tut.
+                        const last = captured[captured.length - 1];
+                        captured.length = before;
+                        captured.push(last);
+                    }
+                });
+            } finally {
+                window.open = origOpen;
+                if (origAssign) { try { window.location.assign = origAssign; } catch (e) {} }
+                if (origReplace) { try { window.location.replace = origReplace; } catch (e) {} }
+            }
+            return captured;
+        ";
+
+        try
+        {
+            var result = js.ExecuteScript(script);
+            if (result is System.Collections.IEnumerable enumerable)
+            {
+                foreach (var item in enumerable)
+                {
+                    urls.Add(item?.ToString() ?? string.Empty);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Cimri Selenium: teklif redirect URL hasadı başarısız");
+        }
+
+        return urls;
     }
 
     private bool ClickLoadMoreButton(IWebDriver driver)
@@ -340,7 +450,19 @@ public class CimriSeleniumPageFetcher : ITransientDependency
         }
     }
 
-    private ChromeDriver CreateDriver(CimriClientOptions options)
+    private IWebDriver CreateDriver(CimriClientOptions options)
+    {
+        var chromeOptions = BuildChromeOptions(options);
+
+        if (!string.IsNullOrWhiteSpace(options.SeleniumGridUrl))
+        {
+            return CreateRemoteDriver(chromeOptions, options);
+        }
+
+        return CreateLocalChromeDriver(chromeOptions, options);
+    }
+
+    private static ChromeOptions BuildChromeOptions(CimriClientOptions options)
     {
         var chromeOptions = new ChromeOptions();
 
@@ -362,6 +484,63 @@ public class CimriSeleniumPageFetcher : ITransientDependency
         chromeOptions.AddArgument($"--user-agent={options.UserAgent}");
         chromeOptions.AddArgument("--window-size=1920,1080");
 
+        ApplyContentBlockingPrefs(chromeOptions, options);
+
+        return chromeOptions;
+    }
+
+    private static void ApplyContentBlockingPrefs(ChromeOptions chromeOptions, CimriClientOptions options)
+    {
+        // chrome://settings/content content_settings
+        var contentSettings = new Dictionary<string, object>();
+        if (options.BlockImages)
+        {
+            contentSettings["images"] = 2;
+        }
+
+        if (options.BlockStyles)
+        {
+            contentSettings["stylesheets"] = 2;
+        }
+
+        if (options.BlockFonts)
+        {
+            // Fontları doğrudan kapatan resmi flag yok; ancak performans için
+            // disable-remote-fonts ve permissions üzerinden geçilebiliyor.
+            chromeOptions.AddArgument("--disable-remote-fonts");
+        }
+
+        if (contentSettings.Count > 0)
+        {
+            var prefs = new Dictionary<string, object>
+            {
+                ["profile.managed_default_content_settings"] = contentSettings,
+                ["profile.default_content_setting_values"] = contentSettings,
+            };
+
+            foreach (var kv in prefs)
+            {
+                chromeOptions.AddUserProfilePreference(kv.Key, kv.Value);
+            }
+        }
+    }
+
+    private IWebDriver CreateRemoteDriver(ChromeOptions chromeOptions, CimriClientOptions options)
+    {
+        var gridUri = new Uri(options.SeleniumGridUrl!.TrimEnd('/'));
+        var commandTimeout = TimeSpan.FromMilliseconds(Math.Max(30_000, options.SeleniumCommandTimeoutMs));
+
+        var driver = new RemoteWebDriver(gridUri, chromeOptions.ToCapabilities(), commandTimeout);
+
+        var pageLoad = TimeSpan.FromMilliseconds(Math.Max(15_000, options.PageLoadTimeoutMs));
+        driver.Manage().Timeouts().PageLoad = pageLoad;
+        driver.Manage().Timeouts().AsynchronousJavaScript = pageLoad;
+
+        return driver;
+    }
+
+    private IWebDriver CreateLocalChromeDriver(ChromeOptions chromeOptions, CimriClientOptions options)
+    {
         var service = ChromeDriverService.CreateDefaultService();
         service.HideCommandPromptWindow = true;
 
@@ -389,6 +568,17 @@ public class CimriSeleniumPageFetcher : ITransientDependency
             "--disable-dev-shm-usage",
             "--disable-gpu",
             "--disable-blink-features=AutomationControlled",
+            "--disable-extensions",
+            "--disable-background-networking",
+            "--disable-default-apps",
+            "--disable-component-update",
+            "--disable-translate",
+            "--disable-sync",
+            "--metrics-recording-only",
+            "--mute-audio",
+            "--no-default-browser-check",
+            "--no-first-run",
+            "--password-store=basic",
         };
     }
 

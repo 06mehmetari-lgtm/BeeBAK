@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -15,15 +16,18 @@ namespace BeeBAK.Marketplaces.Cimri;
 public class CimriProductDetailScraper : ITransientDependency
 {
     private readonly CimriSeleniumPageFetcher _seleniumPageFetcher;
+    private readonly ICimriOfferUrlResolver _offerUrlResolver;
     private readonly IClock _clock;
     private readonly ILogger<CimriProductDetailScraper> _logger;
 
     public CimriProductDetailScraper(
         CimriSeleniumPageFetcher seleniumPageFetcher,
+        ICimriOfferUrlResolver offerUrlResolver,
         IClock clock,
         ILogger<CimriProductDetailScraper> logger)
     {
         _seleniumPageFetcher = seleniumPageFetcher;
+        _offerUrlResolver = offerUrlResolver;
         _clock = clock;
         _logger = logger;
     }
@@ -36,19 +40,63 @@ public class CimriProductDetailScraper : ITransientDependency
     {
         ValidateProductUrl(productUrl, options);
 
-        var html = await _seleniumPageFetcher.TryGetProductDetailHtmlAsync(
+        var fetchResult = await _seleniumPageFetcher.TryGetProductDetailAsync(
             productUrl,
             expandAllOffers,
             options,
             cancellationToken);
 
-        if (string.IsNullOrWhiteSpace(html))
+        if (fetchResult == null || string.IsNullOrWhiteSpace(fetchResult.Html))
         {
             _logger.LogWarning("Cimri PDP boş HTML döndü: {ProductUrl}", productUrl);
             return null;
         }
 
-        return CimriProductDetailHtmlParser.TryParse(html, productUrl, _clock.Now);
+        var extract = CimriProductDetailHtmlParser.TryParse(fetchResult.Html, productUrl, _clock.Now);
+        if (extract == null)
+        {
+            return null;
+        }
+
+        await PopulateMerchantUrlsAsync(extract, fetchResult.CapturedOfferUrls, cancellationToken);
+        return extract;
+    }
+
+    private async Task PopulateMerchantUrlsAsync(
+        CimriProductDetailExtract extract,
+        IReadOnlyList<string> capturedOfferUrls,
+        CancellationToken cancellationToken)
+    {
+        for (var i = 0; i < extract.Offers.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var offer = extract.Offers[i];
+            var captured = i < capturedOfferUrls.Count ? capturedOfferUrls[i] : null;
+
+            // Karttan zaten bir href yakaladıysak (eski parser yolu) onu da değerlendir.
+            var seedUrl = !string.IsNullOrWhiteSpace(captured) ? captured : offer.OfferUrl;
+            if (string.IsNullOrWhiteSpace(seedUrl))
+            {
+                continue;
+            }
+
+            offer.OfferUrl ??= seedUrl;
+
+            try
+            {
+                var resolved = await _offerUrlResolver.ResolveAsync(seedUrl, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(resolved))
+                {
+                    offer.MerchantProductUrl = resolved;
+                    offer.MerchantProductId = CimriMerchantProductIdExtractor.TryExtract(resolved);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Cimri offer redirect resolve edilemedi (idx={Idx}, url={Url})", i, seedUrl);
+            }
+        }
     }
 
     public static void ValidateProductUrl(string productUrl, CimriClientOptions options)

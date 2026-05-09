@@ -62,12 +62,15 @@ public static class CimriDbContextModelCreatingExtensions
             b.Property(x => x.LastUpdatedText).HasMaxLength(CimriConsts.MaxOfferTextLength);
             b.Property(x => x.InstallmentBadge).HasMaxLength(CimriConsts.MaxBadgeLength);
             b.Property(x => x.OfferUrl).HasMaxLength(CimriConsts.MaxOfferUrlLength);
+            b.Property(x => x.MerchantProductUrl).HasMaxLength(CimriConsts.MaxMerchantProductUrlLength);
+            b.Property(x => x.MerchantProductId).HasMaxLength(CimriConsts.MaxMerchantProductIdLength);
 
             b.Property(x => x.Price).HasPrecision(18, 4);
             b.Property(x => x.MerchantScore).HasPrecision(6, 2);
 
             b.HasIndex(x => new { x.ProductId, x.DisplayOrder });
             b.HasIndex(x => x.MerchantId);
+            b.HasIndex(x => x.MerchantProductId);
 
             b.HasOne(x => x.Merchant)
                 .WithMany()

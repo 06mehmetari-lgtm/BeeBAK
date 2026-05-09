@@ -15,4 +15,7 @@ public class CimriListingSyncResultDto
     public int MerchantsAffected { get; set; }
 
     public string ResolvedListingPageUrl { get; set; } = default!;
+
+    /// <summary>true ise iş queue'ya iletildi; sayım metrikleri worker tamamlandıktan sonra DB'den okunur.</summary>
+    public bool Queued { get; set; }
 }
