@@ -13,13 +13,13 @@ export const APP_ROUTES: Routes = [
       import('./marketplaces/marketplaces-shell.component').then(m => m.MarketplacesShellComponent),
     canActivate: [authGuard],
     children: [
-      { path: '', pathMatch: 'full', redirectTo: 'trendyol/products' },
+      { path: '', pathMatch: 'full', redirectTo: 'cimri/products' },
       {
-        path: 'trendyol/products',
+        path: 'cimri/products',
         loadComponent: () =>
-          import('./marketplaces/trendyol/trendyol-products.component').then(m => m.TrendyolProductsComponent),
+          import('./marketplaces/cimri/cimri-products.component').then(m => m.CimriProductsComponent),
         canActivate: [permissionGuard],
-        data: { requiredPolicy: 'BeeBAK.Trendyol' },
+        data: { requiredPolicy: 'BeeBAK.Cimri' },
       },
       {
         path: 'hepsiburada',

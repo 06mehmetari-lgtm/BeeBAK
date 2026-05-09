@@ -11,7 +11,7 @@ public class EcMarketplaceCategory : FullAuditedAggregateRoot<Guid>
 {
     public MarketplaceKind Marketplace { get; protected set; }
 
-    /// <summary>HB/TY tarafındaki kategori kimliği (string — API/HTML kaynaklı).</summary>
+    /// <summary>Pazaryeri tarafındaki kategori kimliği (string — API/HTML kaynaklı).</summary>
     public string ExternalCategoryId { get; protected set; } = default!;
 
     public Guid? ParentId { get; protected set; }
@@ -22,10 +22,10 @@ public class EcMarketplaceCategory : FullAuditedAggregateRoot<Guid>
 
     public string? CategoryUrl { get; protected set; }
 
-    /// <summary>Trendyol alt navigasyon sırası (senkron ile güncellenir).</summary>
+    /// <summary>Pazaryeri navigasyon sırası (senkron ile güncellenir).</summary>
     public int? NavigationDisplayOrder { get; protected set; }
 
-    /// <summary>Son Trendyol navigasyon HTML senkronu (UTC).</summary>
+    /// <summary>Son navigasyon senkronu (UTC).</summary>
     public DateTime? LastNavigationSyncUtc { get; protected set; }
 
     /// <summary>Ham özellikler / breadcrumb / ek meta.</summary>
@@ -61,8 +61,8 @@ public class EcMarketplaceCategory : FullAuditedAggregateRoot<Guid>
         ExtraAttributesJson = extraAttributesJson;
     }
 
-    /// <summary>Trendyol alt navigasyonundan gelen güncel başlık, slug ve URL.</summary>
-    public void ApplyTrendyolNavigationSnapshot(
+    /// <summary>Pazaryeri navigasyonundan gelen güncel başlık, slug ve URL.</summary>
+    public void ApplyNavigationSnapshot(
         string name,
         string? slug,
         string categoryUrl,

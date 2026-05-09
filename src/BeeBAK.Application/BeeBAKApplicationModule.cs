@@ -1,6 +1,6 @@
 ﻿using System;
 using BeeBAK.Marketplaces;
-using BeeBAK.Marketplaces.Trendyol;
+using BeeBAK.Marketplaces.Cimri;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Volo.Abp.Account;
@@ -29,21 +29,15 @@ public class BeeBAKApplicationModule : AbpModule
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
         var configuration = context.Services.GetConfiguration();
-        context.Services.Configure<TrendyolClientOptions>(
-            configuration.GetSection(TrendyolClientOptions.SectionName));
 
-        context.Services.AddHttpClient(TrendyolSearchHttpClient.HttpClientName, (sp, client) =>
-        {
-            var opts = sp.GetRequiredService<IOptionsMonitor<TrendyolClientOptions>>().CurrentValue;
-            var seconds = opts.RequestTimeoutSeconds <= 0 ? 60 : opts.RequestTimeoutSeconds;
-            client.Timeout = TimeSpan.FromSeconds(seconds);
-        });
+        context.Services.Configure<CimriClientOptions>(
+            configuration.GetSection(CimriClientOptions.SectionName));
 
-        context.Services.AddHttpClient(TelegramListingSyncNotifier.HttpClientName, client =>
+        context.Services.AddHttpClient(CimriTelegramListingSyncNotifier.HttpClientName, client =>
         {
             client.Timeout = TimeSpan.FromSeconds(60);
         });
 
-        context.Services.AddTransient<IListingSyncNotifier, TelegramListingSyncNotifier>();
+        context.Services.AddTransient<IListingSyncNotifier, CimriTelegramListingSyncNotifier>();
     }
 }

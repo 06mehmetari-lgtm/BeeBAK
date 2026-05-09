@@ -14,9 +14,22 @@ public class EcMarketplaceProductDto : EntityDto<Guid>
 
     public string ProductUrl { get; set; } = default!;
 
+    public string? BrandName { get; set; }
+
+    /// <summary>Birincil liste görseli (CDN URL).</summary>
+    public string? PrimaryImageUrl { get; set; }
+
+    public decimal? RatingAverage { get; set; }
+
+    public int? ReviewCount { get; set; }
+
     public DateTime? LastSyncedUtc { get; set; }
 
     public decimal? LatestPriceAmount { get; set; }
 
     public string? Currency { get; set; }
+
+    public decimal? ListPriceAmount { get; set; }
+
+    public decimal? DiscountPercent { get; set; }
 }

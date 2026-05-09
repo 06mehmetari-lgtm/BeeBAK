@@ -4,5 +4,5 @@ namespace BeeBAK.Marketplaces;
 public enum MarketplaceKind
 {
     Hepsiburada = 1,
-    Trendyol = 2
+    Cimri = 3
 }

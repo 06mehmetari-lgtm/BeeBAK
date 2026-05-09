@@ -88,4 +88,28 @@ public class EcProduct : FullAuditedAggregateRoot<Guid>
     {
         PriceSnapshots.Add(Check.NotNull(snapshot, nameof(snapshot)));
     }
+
+    public void SetBarcode(string? barcode) => Barcode = barcode;
+
+    public EcProductDetail EnsureDetail(Guid detailEntityId)
+    {
+        if (Detail != null)
+        {
+            return Detail;
+        }
+
+        var d = new EcProductDetail(detailEntityId, Id);
+        Detail = d;
+        return d;
+    }
+
+    /// <summary>Mevcut görsel satırlarını temizleyip yenilerini ekler (senkron ile güncelleme).</summary>
+    public void ReplaceImages(IReadOnlyList<EcProductImage> orderedImages)
+    {
+        Images.Clear();
+        foreach (var img in orderedImages)
+        {
+            Images.Add(Check.NotNull(img, nameof(img)));
+        }
+    }
 }
