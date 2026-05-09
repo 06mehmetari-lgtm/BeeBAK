@@ -234,7 +234,8 @@ public static class CimriListingHtmlParser
         }
 
         var trimmed = href.Trim();
-        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var abs))
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var abs)
+            && (abs.Scheme == Uri.UriSchemeHttp || abs.Scheme == Uri.UriSchemeHttps))
         {
             absolute = abs.ToString();
             return true;

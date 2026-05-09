@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace BeeBAK.Marketplaces.Cimri;
@@ -10,5 +11,16 @@ public sealed class CimriProductDetailFetchResult
 {
     public string? Html { get; set; }
 
-    public IReadOnlyList<string> CapturedOfferUrls { get; set; } = new List<string>();
+    /// <summary>
+    /// Teklif kartı tıklama akışından yakalanmış URL listesi. Çoğunlukla
+    /// <c>https://www.cimri.com/offer/{id}?...</c> biçiminde Cimri redirect URL'leri içerir.
+    /// </summary>
+    public IReadOnlyList<string> CapturedOfferUrls { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Aynı Selenium oturumunda <c>/offer/{id}</c> redirect URL'lerinin yeni tab'da takip edilerek
+    /// çözülmüş asıl mağaza URL'leri. Key = orijinal Cimri redirect URL, Value = nihai mağaza URL.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> ResolvedMerchantUrls { get; set; }
+        = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 }

@@ -18,10 +18,14 @@ namespace BeeBAK.Marketplaces.Cimri;
 public class CimriSeleniumPageFetcher : ITransientDependency
 {
     private readonly ILogger<CimriSeleniumPageFetcher> _logger;
+    private readonly ICimriOfferUrlCache? _offerUrlCache;
 
-    public CimriSeleniumPageFetcher(ILogger<CimriSeleniumPageFetcher> logger)
+    public CimriSeleniumPageFetcher(
+        ILogger<CimriSeleniumPageFetcher> logger,
+        ICimriOfferUrlCache? offerUrlCache = null)
     {
         _logger = logger;
+        _offerUrlCache = offerUrlCache;
     }
 
     /// <summary>
@@ -94,23 +98,54 @@ public class CimriSeleniumPageFetcher : ITransientDependency
                 options,
                 driver =>
                 {
+                    var totalSw = System.Diagnostics.Stopwatch.StartNew();
+
+                    var navSw = System.Diagnostics.Stopwatch.StartNew();
                     PrepareAndNavigate(driver, absoluteProductUrl, options);
                     WaitForCss(driver, "section[id=fiyatlar], .kUEZW", options.DetailWaitTimeoutMs, cancellationToken, throwOnTimeout: false);
-                    DismissCookieBanner(driver);
-                    ScrollPage(driver, options, cancellationToken);
+                    navSw.Stop();
 
+                    var bannerSw = System.Diagnostics.Stopwatch.StartNew();
+                    DismissCookieBanner(driver);
+                    bannerSw.Stop();
+
+                    var scrollSw = System.Diagnostics.Stopwatch.StartNew();
+                    ScrollPage(driver, options, cancellationToken);
+                    scrollSw.Stop();
+
+                    var expandSw = System.Diagnostics.Stopwatch.StartNew();
                     if (expandAllOffers)
                     {
                         ExpandAllOfferGroups(driver, options, cancellationToken);
                     }
+                    expandSw.Stop();
 
                     cancellationToken.ThrowIfCancellationRequested();
+
+                    var captureSw = System.Diagnostics.Stopwatch.StartNew();
                     var capturedOfferUrls = TryCaptureOfferRedirectUrls(driver);
+                    captureSw.Stop();
+
                     var html = driver.PageSource;
+
+                    _logger.LogInformation(
+                        "Cimri PDP timing: nav={NavMs}ms banner={BannerMs}ms scroll={ScrollMs}ms expand={ExpandMs}ms capture={CaptureMs}ms total-pre-resolve={TotalMs}ms",
+                        navSw.ElapsedMilliseconds, bannerSw.ElapsedMilliseconds, scrollSw.ElapsedMilliseconds,
+                        expandSw.ElapsedMilliseconds, captureSw.ElapsedMilliseconds, totalSw.ElapsedMilliseconds);
+
+
+                    // PDP yüklü iken aynı Selenium oturumunda /offer/{id} redirect'lerini yeni tab'da
+                    // takip ederek asıl mağaza URL'lerini hasat et. Cimri tarayıcıdan gelen redirect'i
+                    // (HEAD/GET'in aksine) 30x ile tamamlıyor — bu yüzden tek güvenilir yol burası.
+                    var resolvedMerchantUrls = options.ResolveOfferUrlsViaSelenium
+                        ? ResolveOfferUrlsViaBrowser(driver, capturedOfferUrls, options, cancellationToken)
+                        : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
                     return new CimriProductDetailFetchResult
                     {
                         Html = html,
                         CapturedOfferUrls = capturedOfferUrls,
+                        ResolvedMerchantUrls = resolvedMerchantUrls,
                     };
                 },
                 cancellationToken),
@@ -206,6 +241,423 @@ public class CimriSeleniumPageFetcher : ITransientDependency
         return urls;
     }
 
+    /// <summary>
+    /// Cimri'nin <c>https://www.cimri.com/offer/{id}?...</c> redirect URL'lerini, PDP'nin yüklü olduğu
+    /// aynı driver oturumunda <b>tüm tab'ları paralel açıp</b> her birinin redirect chain'inin host
+    /// cimri.com dışına çıkmasını polling ile takip ederek çözer. Sıralı versiyona göre 8-12x hızlanma.
+    /// HttpClient bu URL'lere 403 yiyor; tarayıcı oturumunda redirect chain sorunsuz tamamlanıyor.
+    /// </summary>
+    private Dictionary<string, string> ResolveOfferUrlsViaBrowser(
+        IWebDriver driver,
+        IReadOnlyList<string> capturedOfferUrls,
+        CimriClientOptions options,
+        CancellationToken cancellationToken)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var resolved = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (capturedOfferUrls == null || capturedOfferUrls.Count == 0)
+        {
+            return resolved;
+        }
+
+        if (driver is not IJavaScriptExecutor js)
+        {
+            return resolved;
+        }
+
+        string mainHandle;
+        try
+        {
+            mainHandle = driver.CurrentWindowHandle;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogTrace(ex, "Cimri Selenium: ana tab handle alınamadı, offer resolve atlandı");
+            return resolved;
+        }
+
+        var maxToResolve = options.MaxOfferUrlsToResolveViaSelenium > 0
+            ? options.MaxOfferUrlsToResolveViaSelenium
+            : int.MaxValue;
+
+        // 1) Cap + dedup + yerinde kullan-ve-atla.
+        var pending = new List<string>(Math.Min(capturedOfferUrls.Count, 32));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var raw in capturedOfferUrls)
+        {
+            if (pending.Count >= maxToResolve)
+            {
+                break;
+            }
+
+            if (string.IsNullOrWhiteSpace(raw) || !seen.Add(raw))
+            {
+                continue;
+            }
+
+            // Doğrudan mağaza URL'si yakalandıysa (cimri.com /offer/ değil) ek tab açmaya gerek yok.
+            if (!IsCimriOfferRedirect(raw))
+            {
+                resolved[raw] = raw;
+                continue;
+            }
+
+            pending.Add(raw);
+        }
+
+        if (pending.Count == 0)
+        {
+            return resolved;
+        }
+
+        // 1.b) Redis cache'te zaten çözülmüş olanları doğrudan al; kalanları Selenium ile çözeceğiz.
+        if (_offerUrlCache != null)
+        {
+            var stillPending = new List<string>(pending.Count);
+            foreach (var url in pending)
+            {
+                string? cached = null;
+                try
+                {
+                    cached = _offerUrlCache.TryGetAsync(url, cancellationToken).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogTrace(ex, "Cimri Selenium: offer-url cache lookup hatası ({Url})", url);
+                }
+
+                if (!string.IsNullOrWhiteSpace(cached) && !IsCimriOfferRedirect(cached!))
+                {
+                    resolved[url] = cached!;
+                }
+                else
+                {
+                    stillPending.Add(url);
+                }
+            }
+
+            if (stillPending.Count != pending.Count)
+            {
+                _logger.LogDebug(
+                    "Cimri Selenium: offer-url cache'ten {Hit}/{Total} hit; {Miss} URL Selenium ile çözülecek",
+                    pending.Count - stillPending.Count,
+                    pending.Count,
+                    stillPending.Count);
+            }
+
+            pending = stillPending;
+        }
+
+        if (pending.Count == 0)
+        {
+            return resolved;
+        }
+
+        // 2) Tüm tab'ları ardarda hızlıca aç ve handle'ları topla.
+        //    window.open arasına kısa bir delay koyarak Chrome'un yeni handle'ı raporlamasına vakit ver.
+        var openWaitFor = new HashSet<string>(driver.WindowHandles, StringComparer.Ordinal);
+        var pendingTabs = new List<PendingOfferTab>(pending.Count);
+
+        // ChromeDriver'da SwitchTo().Window(handle) target tab'ın page-load tamamlanmasını bekler.
+        // Mağaza sayfaları (Amazon/HepsiBurada/MediaMarkt vb.) yavaş yüklendiği için bu davranış polling
+        // turunu tek tab başına 4-5 sn'ye uzatıyor. PageLoadTimeout'u geçici olarak kısaltarak SwitchTo
+        // bu süreden sonra TimeoutException ile hızlı dönecek; biz redirect'in YAPILMIŞ olmasıyla
+        // ilgileniyoruz, sayfanın tamamen yüklenmesiyle değil.
+        TimeSpan? originalPageLoadTimeout = null;
+        try
+        {
+            originalPageLoadTimeout = driver.Manage().Timeouts().PageLoad;
+            driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(2);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogTrace(ex, "Cimri Selenium: PageLoad timeout kısaltılamadı");
+        }
+
+        try
+        {
+            foreach (var url in pending)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                try
+                {
+                    js.ExecuteScript("window.open(arguments[0], '_blank', 'noopener=no,noreferrer=no');", url);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogTrace(ex, "Cimri Selenium: paralel window.open başarısız ({Url})", url);
+                    continue;
+                }
+
+                var handle = WaitForNewWindowHandle(driver, openWaitFor, TimeSpan.FromMilliseconds(600));
+                if (handle == null)
+                {
+                    _logger.LogTrace("Cimri Selenium: yeni tab handle alınamadı ({Url})", url);
+                    continue;
+                }
+
+                openWaitFor.Add(handle);
+                pendingTabs.Add(new PendingOfferTab(url, handle));
+            }
+
+            if (pendingTabs.Count == 0)
+            {
+                return resolved;
+            }
+
+            // 3) Tüm tab'ları aynı deadline ile paralel polla.
+            //    PageLoadTimeout=2sn ayarladığımız için SwitchTo() bu süreden sonra hızlı dönüyor.
+            //    Her tab için sonra JS ile window.stop() çağırıp URL'i oku.
+            var deadlineMs = Math.Max(2000, options.OfferResolveTimeoutMs);
+            var deadline = DateTime.UtcNow + TimeSpan.FromMilliseconds(deadlineMs);
+            var pollInterval = TimeSpan.FromMilliseconds(150);
+            var iterations = 0;
+
+            _logger.LogInformation(
+                "Cimri offer-resolve: polling başlıyor (tabs={Tabs}, deadlineMs={DeadlineMs})",
+                pendingTabs.Count, deadlineMs);
+
+            while (DateTime.UtcNow < deadline)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                iterations++;
+
+                var allDone = true;
+                foreach (var tab in pendingTabs)
+                {
+                    if (tab.Resolved)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        driver.SwitchTo().Window(tab.Handle);
+                    }
+                    catch (NoSuchWindowException)
+                    {
+                        tab.Resolved = true;
+                        continue;
+                    }
+                    catch (WebDriverTimeoutException)
+                    {
+                        // SwitchTo timeout: sayfa hâlâ yükleniyor; URL okumayı yine de deneriz.
+                    }
+                    catch
+                    {
+                        allDone = false;
+                        continue;
+                    }
+
+                    // window.stop() ile yarım kalan resource'ları öldür → bir sonraki SwitchTo hızlı.
+                    try { js.ExecuteScript("try { window.stop(); } catch (e) {}"); } catch { }
+
+                    string current;
+                    try
+                    {
+                        var raw = js.ExecuteScript("return document.location && document.location.href;") as string;
+                        current = raw ?? string.Empty;
+                    }
+                    catch (WebDriverException)
+                    {
+                        allDone = false;
+                        continue;
+                    }
+
+                    if (string.IsNullOrEmpty(current)
+                        || string.Equals(current, "about:blank", StringComparison.OrdinalIgnoreCase)
+                        || IsCimriOfferRedirect(current))
+                    {
+                        allDone = false;
+                        continue;
+                    }
+
+                    tab.FinalUrl = current;
+                    tab.Resolved = true;
+                }
+
+                if (allDone)
+                {
+                    break;
+                }
+
+                Thread.Sleep(pollInterval);
+            }
+
+            _logger.LogInformation(
+                "Cimri offer-resolve: polling bitti (iterasyon={Iter}, resolved={Resolved}/{Total})",
+                iterations, pendingTabs.Count(t => t.Resolved && !string.IsNullOrEmpty(t.FinalUrl)), pendingTabs.Count);
+
+            // 4) Resolve edilemeyenler için son bir okuma denemesi (timeout doldu ama URL kullanılabilir olabilir).
+            foreach (var tab in pendingTabs)
+            {
+                if (tab.Resolved && !string.IsNullOrEmpty(tab.FinalUrl))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    driver.SwitchTo().Window(tab.Handle);
+                    var lastSeen = js.ExecuteScript("return document.location && document.location.href;") as string;
+                    if (!string.IsNullOrEmpty(lastSeen) && !IsCimriOfferRedirect(lastSeen!))
+                    {
+                        tab.FinalUrl = lastSeen;
+                        tab.Resolved = true;
+                    }
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+
+            // 5) Resolve sonuçlarını birleştir + cache'e yaz.
+            foreach (var tab in pendingTabs)
+            {
+                if (string.IsNullOrEmpty(tab.FinalUrl) || IsCimriOfferRedirect(tab.FinalUrl))
+                {
+                    continue;
+                }
+
+                resolved[tab.OriginalUrl] = tab.FinalUrl!;
+
+                if (_offerUrlCache != null)
+                {
+                    try
+                    {
+                        _offerUrlCache.SetAsync(tab.OriginalUrl, tab.FinalUrl!, cancellationToken)
+                            .GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogTrace(ex, "Cimri Selenium: offer-url cache yazma ({Url})", tab.OriginalUrl);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            // 6) Tüm açılmış offer tab'larını kapat ve ana tab'a geri dön.
+            CloseAllExtraTabs(driver, mainHandle);
+
+            // PageLoadTimeout'u eski haline döndür (PDP'nin ilerideki navigation komutlarına etki etmesin).
+            if (originalPageLoadTimeout.HasValue)
+            {
+                try
+                {
+                    driver.Manage().Timeouts().PageLoad = originalPageLoadTimeout.Value;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogTrace(ex, "Cimri Selenium: PageLoad timeout geri yüklenirken hata");
+                }
+            }
+        }
+
+        sw.Stop();
+        _logger.LogInformation(
+            "Cimri offer-resolve: {Resolved} mağaza URL'si {ElapsedMs} ms'de çözüldü (pending={Pending}, captured={Captured})",
+            resolved.Count, sw.ElapsedMilliseconds, pending.Count, capturedOfferUrls.Count);
+
+        return resolved;
+    }
+
+    private sealed class PendingOfferTab
+    {
+        public PendingOfferTab(string originalUrl, string handle)
+        {
+            OriginalUrl = originalUrl;
+            Handle = handle;
+        }
+
+        public string OriginalUrl { get; }
+        public string Handle { get; }
+        public string? FinalUrl { get; set; }
+        public bool Resolved { get; set; }
+    }
+
+    private static bool IsCimriOfferRedirect(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return false;
+        }
+
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var u))
+        {
+            return false;
+        }
+
+        if (!u.Host.EndsWith("cimri.com", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return u.AbsolutePath.StartsWith("/offer/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? WaitForNewWindowHandle(
+        IWebDriver driver,
+        HashSet<string> beforeHandles,
+        TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                foreach (var h in driver.WindowHandles)
+                {
+                    if (!beforeHandles.Contains(h))
+                    {
+                        return h;
+                    }
+                }
+            }
+            catch
+            {
+                // race ile yarış olabilir; tekrar dene
+            }
+
+            Thread.Sleep(40);
+        }
+
+        return null;
+    }
+
+    private void CloseAllExtraTabs(IWebDriver driver, string mainHandle)
+    {
+        try
+        {
+            var handles = driver.WindowHandles;
+            foreach (var h in handles)
+            {
+                if (h == mainHandle)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    driver.SwitchTo().Window(h);
+                    driver.Close();
+                }
+                catch
+                {
+                    // tab zaten kapanmış olabilir
+                }
+            }
+
+            driver.SwitchTo().Window(mainHandle);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogTrace(ex, "Cimri Selenium: ana tab'a geri dönüş");
+        }
+    }
+
     private bool ClickLoadMoreButton(IWebDriver driver)
     {
         IWebElement? button = null;
@@ -261,7 +713,10 @@ public class CimriSeleniumPageFetcher : ITransientDependency
 
     private void ExpandAllOfferGroups(IWebDriver driver, CimriClientOptions options, CancellationToken cancellationToken)
     {
-        const int maxClicks = 30;
+        // Cimri PDP'lerde tipik olarak 1 (nadiren 2) "+9 Fiyat Teklifini Gör" butonu vardır.
+        // Eski max=30 değeri, görünür kalan ama disabled bir buton senaryosunda 30 sn'lik kayba yol açıyordu.
+        const int maxClicks = 3;
+        var pause = Math.Max(120, options.ExpandOffersClickPauseMs);
         for (var i = 0; i < maxClicks; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -294,7 +749,6 @@ public class CimriSeleniumPageFetcher : ITransientDependency
             try
             {
                 ScrollIntoView(driver, expandButton);
-                Thread.Sleep(120);
                 expandButton.Click();
             }
             catch (ElementClickInterceptedException)
@@ -315,7 +769,7 @@ public class CimriSeleniumPageFetcher : ITransientDependency
                 return;
             }
 
-            Thread.Sleep(Math.Max(300, options.ExpandOffersClickPauseMs));
+            Thread.Sleep(pause);
         }
     }
 
@@ -349,28 +803,22 @@ public class CimriSeleniumPageFetcher : ITransientDependency
     {
         try
         {
-            var buttons = driver.FindElements(By.CssSelector("button"))
-                .Where(b =>
-                {
-                    try
-                    {
-                        var t = (b.Text ?? string.Empty).Trim();
-                        return b.Displayed && (
-                            t.Equals("Tamam", StringComparison.OrdinalIgnoreCase)
-                            || t.Equals("Kabul Et", StringComparison.OrdinalIgnoreCase)
-                            || t.Contains("Kabul", StringComparison.OrdinalIgnoreCase));
-                    }
-                    catch
-                    {
-                        return false;
-                    }
-                })
-                .ToList();
+            // Önceden tüm <button> elementleri topluyorduk; her PDP'de 30+ buton geliyor ve filtreleme
+            // pahalıydı. XPath ile sadece metin eşleşmesini DOM tarafında yaptırarak 200-400 ms kazanç.
+            var buttons = driver.FindElements(
+                By.XPath(
+                    "//button[contains(translate(normalize-space(.),'KABUL','kabul'),'kabul')"
+                    + " or normalize-space(.)='Tamam']"));
 
             foreach (var b in buttons)
             {
                 try
                 {
+                    if (!b.Displayed)
+                    {
+                        continue;
+                    }
+
                     b.Click();
                     Thread.Sleep(120);
                     break;
@@ -464,7 +912,12 @@ public class CimriSeleniumPageFetcher : ITransientDependency
 
     private static ChromeOptions BuildChromeOptions(CimriClientOptions options)
     {
-        var chromeOptions = new ChromeOptions();
+        var chromeOptions = new ChromeOptions
+        {
+            // Eager: DOMContentLoaded'da page-load tamamlanmış sayılır; lazy script/image bekleme.
+            // ~2-4 sn kazanç; WaitForCss zaten gerçek elementi bekliyor, regresyon riski düşük.
+            PageLoadStrategy = PageLoadStrategy.Eager,
+        };
 
         if (options.SeleniumHeadless)
         {
@@ -479,6 +932,12 @@ public class CimriSeleniumPageFetcher : ITransientDependency
         foreach (var arg in BuildChromeArgs(options))
         {
             chromeOptions.AddArgument(arg);
+        }
+
+        if (options.BlockImages)
+        {
+            // Content-settings'e ek belt-and-suspenders: Blink'ten direkt image yüklemeyi kapatır.
+            chromeOptions.AddArgument("--blink-settings=imagesEnabled=false");
         }
 
         chromeOptions.AddArgument($"--user-agent={options.UserAgent}");

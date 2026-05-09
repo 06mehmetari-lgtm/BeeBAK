@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http;
 using BeeBAK.Marketplaces;
 using BeeBAK.Marketplaces.Cimri;
+using BeeBAK.Marketplaces.Cimri.Jobs;
 using Medallion.Threading;
 using Medallion.Threading.Redis;
 using Microsoft.Extensions.Configuration;
@@ -114,6 +115,11 @@ public class BeeBAKApplicationModule : AbpModule
         Configure<AbpBackgroundJobOptions>(options =>
         {
             options.IsJobExecutionEnabled = jobsEnabled;
+            options.AddJob<CimriListingDiscoveryJob>();
+            options.AddJob<CimriProductDetailJob>();
         });
+
+        context.Services.AddTransient<CimriListingDiscoveryJob>();
+        context.Services.AddTransient<CimriProductDetailJob>();
     }
 }

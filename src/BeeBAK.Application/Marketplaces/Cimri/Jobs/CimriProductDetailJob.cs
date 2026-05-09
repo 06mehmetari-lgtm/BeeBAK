@@ -1,9 +1,13 @@
 using System;
 using System.Threading.Tasks;
+using BeeBAK.Ecommerce;
+using BeeBAK.Marketplaces.Cimri.Logging;
 using Medallion.Threading;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Volo.Abp.BackgroundJobs;
+using Volo.Abp.Domain.Repositories;
+using Volo.Abp.Timing;
 using Volo.Abp.Uow;
 
 namespace BeeBAK.Marketplaces.Cimri.Jobs;
@@ -19,6 +23,9 @@ public class CimriProductDetailJob : AsyncBackgroundJob<CimriProductDetailJobArg
     private readonly IDistributedLockProvider? _lockProvider;
     private readonly IOptionsMonitor<CimriClientOptions> _options;
     private readonly IUnitOfWorkManager _unitOfWorkManager;
+    private readonly IRepository<EcScrapeRun, Guid> _scrapeRunRepository;
+    private readonly IClock _clock;
+    private readonly IScrapeRunEventLogger _eventLogger;
     private readonly ILogger<CimriProductDetailJob> _ownLogger;
 
     public CimriProductDetailJob(
@@ -26,6 +33,9 @@ public class CimriProductDetailJob : AsyncBackgroundJob<CimriProductDetailJobArg
         ICimriDedupCache dedupCache,
         IOptionsMonitor<CimriClientOptions> options,
         IUnitOfWorkManager unitOfWorkManager,
+        IRepository<EcScrapeRun, Guid> scrapeRunRepository,
+        IClock clock,
+        IScrapeRunEventLogger eventLogger,
         ILogger<CimriProductDetailJob> logger,
         IDistributedLockProvider? lockProvider = null)
     {
@@ -33,6 +43,9 @@ public class CimriProductDetailJob : AsyncBackgroundJob<CimriProductDetailJobArg
         _dedupCache = dedupCache;
         _options = options;
         _unitOfWorkManager = unitOfWorkManager;
+        _scrapeRunRepository = scrapeRunRepository;
+        _clock = clock;
+        _eventLogger = eventLogger;
         _ownLogger = logger;
         _lockProvider = lockProvider;
     }
@@ -45,11 +58,25 @@ public class CimriProductDetailJob : AsyncBackgroundJob<CimriProductDetailJobArg
             return;
         }
 
+        if (await IsCancelledAsync(args.ScrapeRunId))
+        {
+            _ownLogger.LogInformation("Cimri detail iptal edildi (run cancelled): {ContentId}", args.ContentId);
+            await _eventLogger.LogAsync(
+                args.ScrapeRunId, EcScrapeRunEventLevel.Warning, "detail",
+                "İptal nedeniyle atlandı.", title: args.Title, url: args.ProductUrl);
+            return;
+        }
+
         if (!args.ForceRefresh)
         {
             if (await _dedupCache.IsRecentlyVisitedAsync(args.ContentId))
             {
                 _ownLogger.LogDebug("Cimri product detail skipped (recently visited): {ContentId}", args.ContentId);
+                await _eventLogger.LogAsync(
+                    args.ScrapeRunId, EcScrapeRunEventLevel.Info, "detail",
+                    "Yakın zamanda işlenmiş, atlanıyor.", title: args.Title, url: args.ProductUrl);
+                await IncrementProcessedAsync(args.ScrapeRunId);
+                await TryFinalizeRunAsync(args.ScrapeRunId);
                 return;
             }
         }
@@ -62,19 +89,50 @@ public class CimriProductDetailJob : AsyncBackgroundJob<CimriProductDetailJobArg
         if (_lockProvider != null && handle == null)
         {
             _ownLogger.LogInformation("Cimri product detail lock alınamadı, başkası işliyor: {ContentId}", args.ContentId);
+            await _eventLogger.LogAsync(
+                args.ScrapeRunId, EcScrapeRunEventLevel.Info, "detail",
+                "Başka bir worker işliyor, atlanıyor.", title: args.Title, url: args.ProductUrl);
             return;
         }
 
+        await _eventLogger.LogAsync(
+            args.ScrapeRunId, EcScrapeRunEventLevel.Info, "detail",
+            "Detay sayfası açılıyor…", title: args.Title, url: args.ProductUrl);
+
+        var success = false;
         try
         {
-            await ProcessAsync(args);
+            var result = await ProcessAsync(args);
 
             await _dedupCache.TryAcquireAsync(
                 args.ContentId,
                 TimeSpan.FromSeconds(Math.Max(60, _options.CurrentValue.DedupTtlSeconds)));
+
+            await _eventLogger.LogAsync(
+                args.ScrapeRunId, EcScrapeRunEventLevel.Success, "detail",
+                $"Kaydedildi — {result.OffersAdded} teklif, {result.TouchedMerchantIds.Count} mağaza.",
+                title: args.Title, url: args.ProductUrl);
+
+            success = true;
+        }
+        catch (Exception ex)
+        {
+            _ownLogger.LogWarning(ex, "Cimri product detail başarısız: {ContentId}", args.ContentId);
+            await _eventLogger.LogAsync(
+                args.ScrapeRunId, EcScrapeRunEventLevel.Error, "detail",
+                $"Başarısız: {ex.Message}", title: args.Title, url: args.ProductUrl);
+            await IncrementFailedAsync(args.ScrapeRunId);
+            throw;
         }
         finally
         {
+            if (success)
+            {
+                await IncrementProcessedAsync(args.ScrapeRunId);
+            }
+
+            await TryFinalizeRunAsync(args.ScrapeRunId);
+
             if (handle is IAsyncDisposable disposable)
             {
                 await disposable.DisposeAsync();
@@ -86,7 +144,7 @@ public class CimriProductDetailJob : AsyncBackgroundJob<CimriProductDetailJobArg
         }
     }
 
-    private async Task ProcessAsync(CimriProductDetailJobArgs args)
+    private async Task<CimriIngestionResult> ProcessAsync(CimriProductDetailJobArgs args)
     {
         using var uow = _unitOfWorkManager.Begin(requiresNew: true);
 
@@ -110,5 +168,105 @@ public class CimriProductDetailJob : AsyncBackgroundJob<CimriProductDetailJobArg
         _ownLogger.LogInformation(
             "Cimri product detail done: {ContentId} (productId={ProductId}, offers={Offers}, merchants={Merchants})",
             args.ContentId, result.ProductId, result.OffersAdded, result.TouchedMerchantIds.Count);
+
+        return result;
+    }
+
+    private async Task<bool> IsCancelledAsync(Guid scrapeRunId)
+    {
+        if (scrapeRunId == Guid.Empty) return false;
+        try
+        {
+            using var uow = _unitOfWorkManager.Begin(requiresNew: true);
+            var run = await _scrapeRunRepository.FindAsync(scrapeRunId);
+            await uow.CompleteAsync();
+            return run != null && (run.CancelRequested || run.Status == EcScrapeRunStatus.Cancelled);
+        }
+        catch { return false; }
+    }
+
+    private Task IncrementProcessedAsync(Guid scrapeRunId)
+        => MutateRunAsync(scrapeRunId, run => run.IncrementProcessed(), "processed inc");
+
+    private Task IncrementFailedAsync(Guid scrapeRunId)
+        => MutateRunAsync(scrapeRunId, run => run.IncrementFailed(), "failed inc");
+
+    private static bool IsConcurrencyException(Exception ex)
+    {
+        for (var current = ex; current != null; current = current.InnerException!)
+        {
+            var name = current.GetType().Name;
+            if (name == "DbUpdateConcurrencyException" || name == "AbpDbConcurrencyException")
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Concurrency conflict'lerinde basit exponential retry — paralel detail job'ların
+    /// counter güncellemelerinde sayım kaybı olmaması için.</summary>
+    private async Task MutateRunAsync(Guid scrapeRunId, Action<EcScrapeRun> mutate, string opName)
+    {
+        if (scrapeRunId == Guid.Empty) return;
+        const int maxAttempts = 5;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                using var uow = _unitOfWorkManager.Begin(requiresNew: true);
+                var run = await _scrapeRunRepository.FindAsync(scrapeRunId);
+                if (run != null)
+                {
+                    mutate(run);
+                    await _scrapeRunRepository.UpdateAsync(run, autoSave: true);
+                }
+                await uow.CompleteAsync();
+                return;
+            }
+            catch (Exception ex) when (attempt < maxAttempts && IsConcurrencyException(ex))
+            {
+                await Task.Delay(20 * attempt);
+            }
+            catch (Exception ex)
+            {
+                _ownLogger.LogTrace(ex, "ScrapeRun {Op} başarısız: {RunId}", opName, scrapeRunId);
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Run.TotalItems bilinir ve processed+failed >= total ise run'u Complete (veya Cancelled) yapar.
+    /// Aynı anda birden çok detail job çalıştığı için son tamamlanan worker bu kontrolü düşürür.
+    /// </summary>
+    private async Task TryFinalizeRunAsync(Guid scrapeRunId)
+    {
+        if (scrapeRunId == Guid.Empty) return;
+        try
+        {
+            using var uow = _unitOfWorkManager.Begin(requiresNew: true);
+            var run = await _scrapeRunRepository.FindAsync(scrapeRunId);
+            if (run != null
+                && run.Status == EcScrapeRunStatus.Running
+                && run.TotalItems > 0
+                && (run.ProcessedItems + run.FailedItems) >= run.TotalItems)
+            {
+                if (run.CancelRequested)
+                {
+                    run.MarkCancelled(_clock.Now);
+                }
+                else
+                {
+                    run.Complete(_clock.Now);
+                }
+                await _scrapeRunRepository.UpdateAsync(run, autoSave: true);
+            }
+            await uow.CompleteAsync();
+        }
+        catch (Exception ex)
+        {
+            _ownLogger.LogTrace(ex, "ScrapeRun finalize başarısız: {RunId}", scrapeRunId);
+        }
     }
 }

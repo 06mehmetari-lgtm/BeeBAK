@@ -5,6 +5,7 @@ import { Observable } from 'rxjs';
 import {
   CimriListingSyncInput,
   CimriListingSyncResultDto,
+  CimriListingSyncStatusDto,
   CimriProductPagedResult,
   GetCimriProductListInput,
 } from './marketplace.models';
@@ -22,6 +23,27 @@ export class CimriSyncService {
     return this.http.post<CimriListingSyncResultDto>(
       `${this.root}/api/app/cimri-listing-sync/sync`,
       input,
+    );
+  }
+
+  getSyncStatus(
+    scrapeRunId: string,
+    sinceUtc?: string | null,
+  ): Observable<CimriListingSyncStatusDto> {
+    let params = new HttpParams();
+    if (sinceUtc) {
+      params = params.set('sinceUtc', sinceUtc);
+    }
+    return this.http.get<CimriListingSyncStatusDto>(
+      `${this.root}/api/app/cimri-listing-sync/status/${encodeURIComponent(scrapeRunId)}`,
+      { params },
+    );
+  }
+
+  cancelSync(scrapeRunId: string): Observable<CimriListingSyncStatusDto> {
+    return this.http.post<CimriListingSyncStatusDto>(
+      `${this.root}/api/app/cimri-listing-sync/cancel/${encodeURIComponent(scrapeRunId)}`,
+      null,
     );
   }
 

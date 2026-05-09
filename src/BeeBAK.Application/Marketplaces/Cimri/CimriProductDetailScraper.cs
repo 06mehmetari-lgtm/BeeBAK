@@ -58,15 +58,19 @@ public class CimriProductDetailScraper : ITransientDependency
             return null;
         }
 
-        await PopulateMerchantUrlsAsync(extract, fetchResult.CapturedOfferUrls, cancellationToken);
+        await PopulateMerchantUrlsAsync(extract, fetchResult, cancellationToken);
         return extract;
     }
 
     private async Task PopulateMerchantUrlsAsync(
         CimriProductDetailExtract extract,
-        IReadOnlyList<string> capturedOfferUrls,
+        CimriProductDetailFetchResult fetchResult,
         CancellationToken cancellationToken)
     {
+        var capturedOfferUrls = fetchResult.CapturedOfferUrls;
+        var resolvedMap = fetchResult.ResolvedMerchantUrls
+                          ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
         for (var i = 0; i < extract.Offers.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -83,10 +87,30 @@ public class CimriProductDetailScraper : ITransientDependency
 
             offer.OfferUrl ??= seedUrl;
 
+            // 1) Aynı Selenium oturumunda yeni tab ile çözülmüş gerçek mağaza URL'si varsa onu kullan.
+            //    Bu en güvenilir yol: Cimri tarayıcı session'ında redirect chain'i doğru tamamlıyor.
+            if (resolvedMap.TryGetValue(seedUrl, out var browserResolved)
+                && !string.IsNullOrWhiteSpace(browserResolved)
+                && !IsCimriOfferRedirect(browserResolved))
+            {
+                offer.MerchantProductUrl = browserResolved;
+                offer.MerchantProductId = CimriMerchantProductIdExtractor.TryExtract(browserResolved);
+                continue;
+            }
+
+            // 2) Capture edilmiş URL zaten cimri.com dışına yöneliyorsa onu doğrudan kullan.
+            if (!IsCimriOfferRedirect(seedUrl))
+            {
+                offer.MerchantProductUrl = seedUrl;
+                offer.MerchantProductId = CimriMerchantProductIdExtractor.TryExtract(seedUrl);
+                continue;
+            }
+
+            // 3) Son çare: HttpClient resolver. Cimri çoğu zaman 403 dönüyor ama bazı satıcılar için işe yarayabilir.
             try
             {
                 var resolved = await _offerUrlResolver.ResolveAsync(seedUrl, cancellationToken);
-                if (!string.IsNullOrWhiteSpace(resolved))
+                if (!string.IsNullOrWhiteSpace(resolved) && !IsCimriOfferRedirect(resolved))
                 {
                     offer.MerchantProductUrl = resolved;
                     offer.MerchantProductId = CimriMerchantProductIdExtractor.TryExtract(resolved);
@@ -97,6 +121,26 @@ public class CimriProductDetailScraper : ITransientDependency
                 _logger.LogDebug(ex, "Cimri offer redirect resolve edilemedi (idx={Idx}, url={Url})", i, seedUrl);
             }
         }
+    }
+
+    private static bool IsCimriOfferRedirect(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return false;
+        }
+
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var u))
+        {
+            return false;
+        }
+
+        if (!u.Host.EndsWith("cimri.com", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return u.AbsolutePath.StartsWith("/offer/", StringComparison.OrdinalIgnoreCase);
     }
 
     public static void ValidateProductUrl(string productUrl, CimriClientOptions options)
