@@ -62,5 +62,16 @@ public static class EcommerceDbContextModelCreatingExtensions
             b.ConfigureByConvention();
             b.Property(x => x.StatisticsJson).HasColumnType("jsonb");
         });
+
+        builder.Entity<EcScrapeRunEvent>(b =>
+        {
+            b.ToTable(BeeBAKConsts.DbTablePrefix + "EcScrapeRunEvents", BeeBAKConsts.DbSchema);
+            b.ConfigureByConvention();
+            b.Property(x => x.Phase).IsRequired().HasMaxLength(64);
+            b.Property(x => x.Message).IsRequired().HasMaxLength(1024);
+            b.Property(x => x.Title).HasMaxLength(512);
+            b.Property(x => x.Url).HasMaxLength(2048);
+            b.HasIndex(x => new { x.ScrapeRunId, x.TimestampUtc });
+        });
     }
 }

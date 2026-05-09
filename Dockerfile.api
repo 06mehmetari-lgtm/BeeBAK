@@ -27,6 +27,11 @@ ENV DOTNET_RUNNING_IN_CONTAINER=true
 ENV DOTNET_USE_POLLING_FILE_WATCHER=true
 ENV DOTNET_ROLL_FORWARD=LatestMajor
 ENV DOTNET_ROLL_FORWARD_TO_PRERELEASE=1
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
+ && rm -rf /var/lib/apt/lists/*
+
 EXPOSE 8080
 
 COPY --from=build /app/publish ./

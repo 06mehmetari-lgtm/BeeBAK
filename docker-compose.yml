@@ -76,16 +76,16 @@ services:
       SE_EVENT_BUS_HOST: selenium-hub
       SE_EVENT_BUS_PUBLISH_PORT: "4442"
       SE_EVENT_BUS_SUBSCRIBE_PORT: "4443"
-      SE_NODE_MAX_SESSIONS: "2"
+      SE_NODE_MAX_SESSIONS: "3"
       SE_NODE_OVERRIDE_MAX_SESSIONS: "true"
       SE_NODE_SESSION_TIMEOUT: "180"
       SE_VNC_NO_PASSWORD: "1"
       SE_OPTS: "--detect-drivers true"
     deploy:
-      replicas: 2
+      replicas: 4
       resources:
         limits:
-          memory: 1500M
+          memory: 1200M
 
   dbmigrator:
     build:
@@ -131,8 +131,19 @@ services:
       AuthServer__RequireHttpsMetadata: "false"
       AuthServer__UseDevelopmentCertificate: "true"
       App__HealthUiCheckUrl: "http://localhost:8080/health-status"
+      Cimri__BaseUrl: "https://www.cimri.com"
+      Cimri__DiscountedListingPath: "/indirimli-urunler"
+      Cimri__SeleniumGridUrl: "http://selenium-hub:4444/wd/hub"
+      Cimri__SeleniumHeadless: "true"
+      Cimri__BlockImages: "true"
+      Cimri__BlockFonts: "true"
+      Cimri__UseQueue: "true"
+      Cimri__DefaultMaxPages: "1"
+      Cimri__DefaultMaxProducts: "10"
     ports:
       - "44381:8080"
+    volumes:
+      - beebak_dataprotection:/root/.aspnet/DataProtection-Keys
     deploy:
       resources:
         limits:
@@ -163,12 +174,26 @@ services:
       RabbitMq__Connections__Default__UserName: "beebak"
       RabbitMq__Connections__Default__Password: "beebak"
       BackgroundJobs__IsJobExecutionEnabled: "true"
+      Cimri__BaseUrl: "https://www.cimri.com"
+      Cimri__DiscountedListingPath: "/indirimli-urunler"
       Cimri__SeleniumGridUrl: "http://selenium-hub:4444/wd/hub"
+      Cimri__SeleniumHeadless: "true"
       Cimri__BlockImages: "true"
       Cimri__BlockFonts: "true"
       Cimri__UseQueue: "true"
+      Cimri__DefaultMaxPages: "1"
+      Cimri__DefaultMaxProducts: "10"
       Cimri__DedupTtlSeconds: "21600"
-      Cimri__WorkerConcurrency: "2"
+      Cimri__ScrollPasses: "2"
+      Cimri__ScrollPauseMs: "200"
+      Cimri__DetailWaitTimeoutMs: "8000"
+      Cimri__ExpandOffersClickPauseMs: "500"
+      Cimri__LoadMoreClickPauseMs: "700"
+      Cimri__DelayBetweenProductsMs: "0"
+      Cimri__OfferResolveTimeoutMs: "4000"
+      Cimri__MaxOfferUrlsToResolveViaSelenium: "10"
+      Cimri__OfferUrlCacheTtlSeconds: "604800"
+      RabbitMq__BackgroundJobs__PrefetchCount: "2"
     deploy:
       replicas: 2
       resources:
@@ -177,3 +202,4 @@ services:
 
 volumes:
   beebak_pg:
+  beebak_dataprotection:

@@ -3,6 +3,7 @@ using System;
 using BeeBAK.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Volo.Abp.EntityFrameworkCore;
@@ -12,9 +13,11 @@ using Volo.Abp.EntityFrameworkCore;
 namespace BeeBAK.Migrations
 {
     [DbContext(typeof(BeeBAKDbContext))]
-    partial class BeeBAKDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260509170908_Added_EcScrapeRun_Progress")]
+    partial class Added_EcScrapeRun_Progress
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -380,51 +383,6 @@ namespace BeeBAK.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("AppEcScrapeRuns", (string)null);
-                });
-
-            modelBuilder.Entity("BeeBAK.Ecommerce.EcScrapeRunEvent", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uuid");
-
-                    b.Property<int?>("Index")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("Level")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Message")
-                        .IsRequired()
-                        .HasMaxLength(1024)
-                        .HasColumnType("character varying(1024)");
-
-                    b.Property<string>("Phase")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<Guid>("ScrapeRunId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("TimestampUtc")
-                        .HasColumnType("timestamp without time zone");
-
-                    b.Property<string>("Title")
-                        .HasMaxLength(512)
-                        .HasColumnType("character varying(512)");
-
-                    b.Property<int?>("Total")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Url")
-                        .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ScrapeRunId", "TimestampUtc");
-
-                    b.ToTable("AppEcScrapeRunEvents", (string)null);
                 });
 
             modelBuilder.Entity("BeeBAK.Marketplaces.Cimri.CimriMerchant", b =>
