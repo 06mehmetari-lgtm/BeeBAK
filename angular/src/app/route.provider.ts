@@ -25,13 +25,13 @@ function configureRoutes() {
       layout: eLayoutType.application,
     },
     {
-      path: '/marketplaces/trendyol/products',
-      name: '::Menu:MarketplacesTrendyol',
+      path: '/marketplaces/cimri/products',
+      name: '::Menu:MarketplacesCimri',
       parentName: '::Menu:Marketplaces',
       layout: eLayoutType.application,
-      iconClass: 'fas fa-shopping-bag',
+      iconClass: 'fas fa-tags',
       order: 1,
-      requiredPolicy: 'BeeBAK.Trendyol',
+      requiredPolicy: 'BeeBAK.Cimri',
     },
     {
       path: '/marketplaces/hepsiburada',

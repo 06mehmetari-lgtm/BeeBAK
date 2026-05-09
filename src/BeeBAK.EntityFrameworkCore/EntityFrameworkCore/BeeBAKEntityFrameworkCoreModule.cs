@@ -1,5 +1,6 @@
 using System;
 using BeeBAK.Ecommerce;
+using BeeBAK.Marketplaces.Cimri;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.Uow;
 using Volo.Abp.AuditLogging.EntityFrameworkCore;
@@ -49,6 +50,8 @@ public class BeeBAKEntityFrameworkCoreModule : AbpModule
                  * default repositories only for aggregate roots */
             options.AddDefaultRepositories(includeAllEntities: true);
             options.AddRepository<EcProduct, Ecommerce.EcProductRepository>();
+            options.AddRepository<CimriProduct, Cimri.CimriProductRepository>();
+            options.AddRepository<CimriMerchant, Cimri.CimriMerchantRepository>();
         });
 
         if (AbpStudioAnalyzeHelper.IsInAnalyzeMode)

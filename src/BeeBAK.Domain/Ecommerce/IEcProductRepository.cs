@@ -13,6 +13,8 @@ public interface IEcProductRepository : IRepository<EcProduct, Guid>
         MarketplaceKind marketplace,
         string externalProductId,
         bool includePriceSnapshots = false,
+        bool includeDetail = false,
+        bool includeImages = false,
         CancellationToken cancellationToken = default);
 
     /// <summary>Sayfalı liste; her ürün için son fiyat snapshot tek kayıt olarak Include edilir.</summary>

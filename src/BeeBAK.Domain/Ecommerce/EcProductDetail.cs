@@ -10,7 +10,7 @@ public class EcProductDetail : Entity<Guid>
 
     public string? DescriptionHtml { get; protected set; }
 
-    /// <summary>Özellik listesi (JSON — HB/TY farklı şemalar).</summary>
+    /// <summary>Özellik listesi (JSON — pazaryerlerine göre farklı şemalar).</summary>
     public string? SpecificationsJson { get; protected set; }
 
     public decimal? RatingAverage { get; protected set; }
@@ -31,5 +31,19 @@ public class EcProductDetail : Entity<Guid>
         : base(id)
     {
         ProductId = productId;
+    }
+
+    public void ApplyPdp(
+        decimal? ratingAverage,
+        int? reviewCount,
+        string? sellerName,
+        string? specificationsJson,
+        string? sellerScoreJson)
+    {
+        RatingAverage = ratingAverage;
+        ReviewCount = reviewCount;
+        SellerName = sellerName;
+        SpecificationsJson = specificationsJson;
+        SellerScoreJson = sellerScoreJson;
     }
 }

@@ -24,6 +24,8 @@ public class EcProductRepository :
         MarketplaceKind marketplace,
         string externalProductId,
         bool includePriceSnapshots = false,
+        bool includeDetail = false,
+        bool includeImages = false,
         CancellationToken cancellationToken = default)
     {
         var query = (await GetQueryableAsync())
@@ -32,6 +34,16 @@ public class EcProductRepository :
         if (includePriceSnapshots)
         {
             query = query.Include(x => x.PriceSnapshots);
+        }
+
+        if (includeDetail)
+        {
+            query = query.Include(x => x.Detail);
+        }
+
+        if (includeImages)
+        {
+            query = query.Include(x => x.Images);
         }
 
         return await query.FirstOrDefaultAsync(GetCancellationToken(cancellationToken));
@@ -55,6 +67,8 @@ public class EcProductRepository :
             .Skip(skipCount)
             .Take(maxResultCount)
             .Include(x => x.PriceSnapshots.OrderByDescending(s => s.ScrapedUtc).Take(1))
+            .Include(x => x.Detail)
+            .Include(x => x.Images)
             .ToListAsync(token);
 
         return (items, totalCount);

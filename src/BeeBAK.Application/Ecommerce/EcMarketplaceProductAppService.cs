@@ -37,8 +37,8 @@ public class EcMarketplaceProductAppService : ApplicationService, IEcMarketplace
     {
         switch (marketplace)
         {
-            case MarketplaceKind.Trendyol:
-                await AuthorizationService.CheckAsync(BeeBAKPermissions.Trendyol.Default);
+            case MarketplaceKind.Cimri:
+                await AuthorizationService.CheckAsync(BeeBAKPermissions.Cimri.Default);
                 break;
             case MarketplaceKind.Hepsiburada:
                 await AuthorizationService.CheckAsync(BeeBAKPermissions.Hepsiburada.Default);
@@ -50,6 +50,11 @@ public class EcMarketplaceProductAppService : ApplicationService, IEcMarketplace
     {
         var latest = p.PriceSnapshots.OrderByDescending(s => s.ScrapedUtc).FirstOrDefault();
 
+        var primaryImage = p.Images
+            .OrderBy(i => i.SortOrder)
+            .ThenBy(i => i.ImageUrl)
+            .FirstOrDefault(i => i.IsPrimary) ?? p.Images.OrderBy(i => i.SortOrder).FirstOrDefault();
+
         return new EcMarketplaceProductDto
         {
             Id = p.Id,
@@ -57,9 +62,15 @@ public class EcMarketplaceProductAppService : ApplicationService, IEcMarketplace
             ExternalProductId = p.ExternalProductId,
             Title = p.Title,
             ProductUrl = p.ProductUrl,
+            BrandName = p.BrandName,
+            PrimaryImageUrl = primaryImage?.ImageUrl,
+            RatingAverage = p.Detail?.RatingAverage,
+            ReviewCount = p.Detail?.ReviewCount,
             LastSyncedUtc = p.LastSyncedUtc,
             LatestPriceAmount = latest?.PriceAmount,
             Currency = latest?.Currency,
+            ListPriceAmount = latest?.ListPriceAmount,
+            DiscountPercent = latest?.DiscountPercent,
         };
     }
 }
