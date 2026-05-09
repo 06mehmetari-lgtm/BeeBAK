@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace BeeBAK.Marketplaces.Cimri;
@@ -22,4 +23,28 @@ public class CimriListingSyncInput
 
     [JsonPropertyName("forceRefresh")]
     public bool ForceRefresh { get; set; }
+
+    /// <summary>Selenium ile açılacak tam HTTPS listeleme URL'si. Boşsa yapılandırma (Cimri:ListingPageUrl veya BaseUrl+yol).</summary>
+    [JsonPropertyName("listingPageUrl")]
+    public string? ListingPageUrl { get; set; }
+
+    /// <summary>UI uyumu: Angular <c>includeProductDetails</c> ile aynı anlamda.</summary>
+    [JsonPropertyName("includeProductDetails")]
+    public bool? IncludeProductDetails { get; set; }
+
+    /// <summary>Yalnızca izin verilen mağaza adları (alt-dize) ile eşleşen teklifleri kaydet.</summary>
+    [JsonPropertyName("restrictOffersToAllowedMerchants")]
+    public bool? RestrictOffersToAllowedMerchants { get; set; }
+
+    /// <summary>Kayıtlı tekliflerde mağaza ürün kimliği zorunlu.</summary>
+    [JsonPropertyName("requireMerchantProductId")]
+    public bool? RequireMerchantProductId { get; set; }
+
+    /// <summary>Uygun teklif yoksa ürün oluşturma / var olanı sil.</summary>
+    [JsonPropertyName("skipProductWithoutQualifiedOffers")]
+    public bool? SkipProductWithoutQualifiedOffers { get; set; }
+
+    /// <summary>Boş veya null ise yapılandırma varsayılanı.</summary>
+    [JsonPropertyName("allowedMerchantSubstrings")]
+    public List<string>? AllowedMerchantSubstrings { get; set; }
 }

@@ -61,6 +61,8 @@ export class CimriProductsComponent implements OnInit, OnDestroy, AfterViewCheck
 
   readonly maxPagesInput = signal<number | null>(null);
   readonly maxProductsInput = signal<number | null>(null);
+  /** Boş bırakılırsa sunucu appsettings / ortamındaki Cimri ayarları kullanılır; adresi her zaman siz değiştirebilirsiniz. */
+  readonly listingPageUrl = signal('');
   readonly expandAllOffers = signal(true);
   readonly includeProductDetails = signal(true);
 
@@ -168,7 +170,7 @@ export class CimriProductsComponent implements OnInit, OnDestroy, AfterViewCheck
       })
       .subscribe({
         next: result => {
-          this.products.set(result.items ?? []);
+          this.products.set(this.sortProductsByDiscountDesc(result.items ?? []));
           this.totalCount.set(result.totalCount ?? 0);
           this.isLoading.set(false);
         },
@@ -222,8 +224,10 @@ export class CimriProductsComponent implements OnInit, OnDestroy, AfterViewCheck
     const payload: CimriListingSyncInput = {
       maxPages: this.maxPagesInput(),
       maxProducts: this.maxProductsInput(),
+      includeOffers: this.includeProductDetails(),
       includeProductDetails: this.includeProductDetails(),
       expandAllOffers: this.expandAllOffers(),
+      listingPageUrl: this.listingPageUrl().trim() || null,
       forceRefresh: true,
     };
 
@@ -305,6 +309,30 @@ export class CimriProductsComponent implements OnInit, OnDestroy, AfterViewCheck
     }
     this.events.set(merged);
     this.pendingScrollToBottom = true;
+  }
+
+  /** Listede en yüksek indirim üstte; API sırasına ek güvence. discountPercent yoksa eski/liste fiyatından tahmin. */
+  private sortProductsByDiscountDesc(items: CimriProductDto[]): CimriProductDto[] {
+    return [...items].sort((a, b) => {
+      const db = this.effectiveSortDiscount(b);
+      const da = this.effectiveSortDiscount(a);
+      if (db !== da) {
+        return db - da;
+      }
+      return (a.title ?? '').localeCompare(b.title ?? '', 'tr', { sensitivity: 'base' });
+    });
+  }
+
+  private effectiveSortDiscount(p: CimriProductDto): number {
+    if (p.discountPercent != null && Number.isFinite(Number(p.discountPercent))) {
+      return Number(p.discountPercent);
+    }
+    const prev = p.previousPriceAmount;
+    const best = p.bestPriceAmount;
+    if (prev != null && best != null && prev > 0 && prev > best) {
+      return ((prev - best) / prev) * 100;
+    }
+    return Number.NEGATIVE_INFINITY;
   }
 
   formatTime(iso: string): string {

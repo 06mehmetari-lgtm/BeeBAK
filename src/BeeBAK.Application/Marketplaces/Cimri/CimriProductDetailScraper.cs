@@ -58,13 +58,14 @@ public class CimriProductDetailScraper : ITransientDependency
             return null;
         }
 
-        await PopulateMerchantUrlsAsync(extract, fetchResult, cancellationToken);
+        await PopulateMerchantUrlsAsync(extract, fetchResult, options, cancellationToken);
         return extract;
     }
 
     private async Task PopulateMerchantUrlsAsync(
         CimriProductDetailExtract extract,
         CimriProductDetailFetchResult fetchResult,
+        CimriClientOptions options,
         CancellationToken cancellationToken)
     {
         var capturedOfferUrls = fetchResult.CapturedOfferUrls;
@@ -91,15 +92,15 @@ public class CimriProductDetailScraper : ITransientDependency
             //    Bu en güvenilir yol: Cimri tarayıcı session'ında redirect chain'i doğru tamamlıyor.
             if (resolvedMap.TryGetValue(seedUrl, out var browserResolved)
                 && !string.IsNullOrWhiteSpace(browserResolved)
-                && !IsCimriOfferRedirect(browserResolved))
+                && !CimriCrawlHost.IsCimriOfferRedirectUrl(browserResolved, options))
             {
                 offer.MerchantProductUrl = browserResolved;
                 offer.MerchantProductId = CimriMerchantProductIdExtractor.TryExtract(browserResolved);
                 continue;
             }
 
-            // 2) Capture edilmiş URL zaten cimri.com dışına yöneliyorsa onu doğrudan kullan.
-            if (!IsCimriOfferRedirect(seedUrl))
+            // 2) Capture edilmiş URL zaten Cimri /offer/ redirect'i değilse mağazaya gidiyordur.
+            if (!CimriCrawlHost.IsCimriOfferRedirectUrl(seedUrl, options))
             {
                 offer.MerchantProductUrl = seedUrl;
                 offer.MerchantProductId = CimriMerchantProductIdExtractor.TryExtract(seedUrl);
@@ -110,7 +111,7 @@ public class CimriProductDetailScraper : ITransientDependency
             try
             {
                 var resolved = await _offerUrlResolver.ResolveAsync(seedUrl, cancellationToken);
-                if (!string.IsNullOrWhiteSpace(resolved) && !IsCimriOfferRedirect(resolved))
+                if (!string.IsNullOrWhiteSpace(resolved) && !CimriCrawlHost.IsCimriOfferRedirectUrl(resolved, options))
                 {
                     offer.MerchantProductUrl = resolved;
                     offer.MerchantProductId = CimriMerchantProductIdExtractor.TryExtract(resolved);
@@ -121,26 +122,6 @@ public class CimriProductDetailScraper : ITransientDependency
                 _logger.LogDebug(ex, "Cimri offer redirect resolve edilemedi (idx={Idx}, url={Url})", i, seedUrl);
             }
         }
-    }
-
-    private static bool IsCimriOfferRedirect(string url)
-    {
-        if (string.IsNullOrWhiteSpace(url))
-        {
-            return false;
-        }
-
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var u))
-        {
-            return false;
-        }
-
-        if (!u.Host.EndsWith("cimri.com", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        return u.AbsolutePath.StartsWith("/offer/", StringComparison.OrdinalIgnoreCase);
     }
 
     public static void ValidateProductUrl(string productUrl, CimriClientOptions options)
@@ -162,16 +143,22 @@ public class CimriProductDetailScraper : ITransientDependency
                 .WithData("ProductUrl", productUrl);
         }
 
-        if (!Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out var baseUri))
+        if (string.IsNullOrWhiteSpace(options.BaseUrl)
+            && string.IsNullOrWhiteSpace(options.AllowedCimriHostSuffix))
+        {
+            throw new BusinessException("BeeBAK:CimriBaseUrlOrHostSuffixRequired");
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.BaseUrl)
+            && !Uri.TryCreate(options.BaseUrl.Trim(), UriKind.Absolute, out _))
         {
             throw new BusinessException("BeeBAK:CimriInvalidBaseUrl");
         }
 
-        if (!string.Equals(uri.Host, baseUri.Host, StringComparison.OrdinalIgnoreCase))
+        if (!CimriCrawlHost.IsAllowedHost(uri, options))
         {
             throw new BusinessException("BeeBAK:CimriProductUrlHostNotAllowed")
-                .WithData("Host", uri.Host)
-                .WithData("ExpectedHost", baseUri.Host);
+                .WithData("Host", uri.Host);
         }
 
         if (!CimriListingHtmlParser.TryExtractContentId(productUrl, out _))

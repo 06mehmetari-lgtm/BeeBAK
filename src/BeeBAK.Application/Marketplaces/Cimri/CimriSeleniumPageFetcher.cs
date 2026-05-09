@@ -296,7 +296,7 @@ public class CimriSeleniumPageFetcher : ITransientDependency
             }
 
             // Doğrudan mağaza URL'si yakalandıysa (cimri.com /offer/ değil) ek tab açmaya gerek yok.
-            if (!IsCimriOfferRedirect(raw))
+            if (!CimriCrawlHost.IsCimriOfferRedirectUrl(raw, options))
             {
                 resolved[raw] = raw;
                 continue;
@@ -326,7 +326,7 @@ public class CimriSeleniumPageFetcher : ITransientDependency
                     _logger.LogTrace(ex, "Cimri Selenium: offer-url cache lookup hatası ({Url})", url);
                 }
 
-                if (!string.IsNullOrWhiteSpace(cached) && !IsCimriOfferRedirect(cached!))
+                if (!string.IsNullOrWhiteSpace(cached) && !CimriCrawlHost.IsCimriOfferRedirectUrl(cached!, options))
                 {
                     resolved[url] = cached!;
                 }
@@ -467,7 +467,7 @@ public class CimriSeleniumPageFetcher : ITransientDependency
 
                     if (string.IsNullOrEmpty(current)
                         || string.Equals(current, "about:blank", StringComparison.OrdinalIgnoreCase)
-                        || IsCimriOfferRedirect(current))
+                        || CimriCrawlHost.IsCimriOfferRedirectUrl(current, options))
                     {
                         allDone = false;
                         continue;
@@ -501,7 +501,7 @@ public class CimriSeleniumPageFetcher : ITransientDependency
                 {
                     driver.SwitchTo().Window(tab.Handle);
                     var lastSeen = js.ExecuteScript("return document.location && document.location.href;") as string;
-                    if (!string.IsNullOrEmpty(lastSeen) && !IsCimriOfferRedirect(lastSeen!))
+                    if (!string.IsNullOrEmpty(lastSeen) && !CimriCrawlHost.IsCimriOfferRedirectUrl(lastSeen!, options))
                     {
                         tab.FinalUrl = lastSeen;
                         tab.Resolved = true;
@@ -516,7 +516,7 @@ public class CimriSeleniumPageFetcher : ITransientDependency
             // 5) Resolve sonuçlarını birleştir + cache'e yaz.
             foreach (var tab in pendingTabs)
             {
-                if (string.IsNullOrEmpty(tab.FinalUrl) || IsCimriOfferRedirect(tab.FinalUrl))
+                if (string.IsNullOrEmpty(tab.FinalUrl) || CimriCrawlHost.IsCimriOfferRedirectUrl(tab.FinalUrl, options))
                 {
                     continue;
                 }
@@ -576,26 +576,6 @@ public class CimriSeleniumPageFetcher : ITransientDependency
         public string Handle { get; }
         public string? FinalUrl { get; set; }
         public bool Resolved { get; set; }
-    }
-
-    private static bool IsCimriOfferRedirect(string url)
-    {
-        if (string.IsNullOrWhiteSpace(url))
-        {
-            return false;
-        }
-
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var u))
-        {
-            return false;
-        }
-
-        if (!u.Host.EndsWith("cimri.com", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        return u.AbsolutePath.StartsWith("/offer/", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? WaitForNewWindowHandle(

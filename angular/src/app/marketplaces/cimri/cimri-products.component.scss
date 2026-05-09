@@ -36,6 +36,11 @@
       gap: 0.25rem;
       min-width: 180px;
 
+      &--grow {
+        flex: 1;
+        min-width: min(100%, 520px);
+      }
+
       span {
         font-size: 0.85rem;
         color: #4b5563;

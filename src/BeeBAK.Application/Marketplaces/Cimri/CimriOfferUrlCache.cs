@@ -43,7 +43,7 @@ public class CimriOfferUrlCache : ICimriOfferUrlCache, ITransientDependency
 
     public async Task<string?> TryGetAsync(string cimriOfferUrl, CancellationToken cancellationToken = default)
     {
-        var key = TryBuildKey(cimriOfferUrl);
+        var key = BuildCacheKey(cimriOfferUrl);
         if (key == null)
         {
             return null;
@@ -73,7 +73,7 @@ public class CimriOfferUrlCache : ICimriOfferUrlCache, ITransientDependency
             return;
         }
 
-        var key = TryBuildKey(cimriOfferUrl);
+        var key = BuildCacheKey(cimriOfferUrl);
         if (key == null)
         {
             return;
@@ -102,7 +102,7 @@ public class CimriOfferUrlCache : ICimriOfferUrlCache, ITransientDependency
     /// kullanılır; query string (productId, offerId vb.) anahtarda yer almaz çünkü aynı offer kimliği
     /// her zaman aynı mağaza URL'sine çözülür.
     /// </summary>
-    private static string? TryBuildKey(string cimriOfferUrl)
+    private string? BuildCacheKey(string cimriOfferUrl)
     {
         if (string.IsNullOrWhiteSpace(cimriOfferUrl))
         {
@@ -114,7 +114,7 @@ public class CimriOfferUrlCache : ICimriOfferUrlCache, ITransientDependency
             return null;
         }
 
-        if (!uri.Host.EndsWith("cimri.com", StringComparison.OrdinalIgnoreCase))
+        if (!CimriCrawlHost.IsAllowedHost(uri, _options.CurrentValue))
         {
             return null;
         }
