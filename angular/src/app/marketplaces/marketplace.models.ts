@@ -39,6 +39,53 @@ export interface CimriListingSyncResultDto {
   productsAffected: number;
   offersAffected: number;
   merchantsAffected: number;
+  resolvedListingPageUrl?: string | null;
+  queued?: boolean;
+}
+
+export enum EcScrapeRunStatus {
+  Pending = 0,
+  Running = 1,
+  Completed = 2,
+  Failed = 3,
+  Cancelled = 4,
+}
+
+export enum EcScrapeRunEventLevel {
+  Info = 0,
+  Success = 1,
+  Warning = 2,
+  Error = 3,
+}
+
+export interface CimriListingSyncEventDto {
+  id: string;
+  timestampUtc: string;
+  level: EcScrapeRunEventLevel;
+  phase: string;
+  message: string;
+  title?: string | null;
+  url?: string | null;
+  index?: number | null;
+  total?: number | null;
+}
+
+export interface CimriListingSyncStatusDto {
+  scrapeRunId: string;
+  status: EcScrapeRunStatus;
+  totalItems: number;
+  processedItems: number;
+  failedItems: number;
+  cancelRequested: boolean;
+  startedUtc: string;
+  completedUtc?: string | null;
+  notes?: string | null;
+  progress: number;
+  elapsedSeconds: number;
+  estimatedRemainingSeconds?: number | null;
+  isActive: boolean;
+  events: CimriListingSyncEventDto[];
+  latestEventUtc?: string | null;
 }
 
 export interface CimriOfferDto {

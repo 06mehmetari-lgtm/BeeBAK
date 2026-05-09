@@ -72,14 +72,36 @@ public class CimriClientOptions
     /// <summary>Sayfa başına eklenebilecek küçük rastgele gecikmenin üst sınırı (ms). 0 = kapalı.</summary>
     public int RandomDelayJitterMs { get; set; } = 600;
 
-    /// <summary>Ürün detay job'unu kaç paralel worker'la çalıştırmak istediğin (worker host'unda).</summary>
-    public int WorkerConcurrency { get; set; } = 4;
-
     /// <summary>Bir ürünü tekrar scrape etmeden önce beklenecek süre (saniye). Redis dedup'ta kullanılır.</summary>
     public int DedupTtlSeconds { get; set; } = 6 * 60 * 60;
 
     /// <summary>Kullanıcı API'den senkronizasyon talep ettiğinde queue'ya iş atan mı yoksa in-process mi çalışsın?</summary>
     public bool UseQueue { get; set; } = true;
+
+    /// <summary>
+    /// Cimri'nin <c>/offer/{id}</c> redirect URL'lerini, PDP'yi açtığımız aynı Selenium oturumunda
+    /// yeni tab açarak çözer. Cimri direkt HEAD/GET'e 403 dönüyor; tarayıcı oturumunda redirect chain
+    /// güvenli şekilde takip ediliyor. Default: true.
+    /// </summary>
+    public bool ResolveOfferUrlsViaSelenium { get; set; } = true;
+
+    /// <summary>
+    /// Selenium tabanlı offer URL resolve sırasında her bir tab için bekleme üst sınırı (ms).
+    /// Bu süre içinde cimri.com host'undan farklı bir host'a geçilirse sonuç o URL kabul edilir.
+    /// </summary>
+    public int OfferResolveTimeoutMs { get; set; } = 6000;
+
+    /// <summary>
+    /// Selenium ile tek bir ürün başına en fazla kaç offer URL'si çözülecek (perf cap).
+    /// 0 = tüm offer'lar denenir.
+    /// </summary>
+    public int MaxOfferUrlsToResolveViaSelenium { get; set; } = 12;
+
+    /// <summary>
+    /// Selenium ile çözülmüş Cimri offer-id → gerçek mağaza URL'si Redis cache TTL süresi (saniye).
+    /// Aynı offer farklı ürün listelerinde tekrarlanırsa Selenium tab açma adımı atlanır.
+    /// </summary>
+    public int OfferUrlCacheTtlSeconds { get; set; } = 7 * 24 * 60 * 60;
 
     public CimriTelegramNotificationOptions Telegram { get; set; } = new();
 }

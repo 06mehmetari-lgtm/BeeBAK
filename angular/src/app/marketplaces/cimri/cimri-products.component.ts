@@ -1,14 +1,31 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import {
+  AfterViewChecked,
+  Component,
+  ElementRef,
+  OnDestroy,
+  OnInit,
+  ViewChild,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LocalizationPipe, PermissionService } from '@abp/ng.core';
 import { CimriSyncService } from '../cimri-sync.service';
 import {
+  CimriListingSyncEventDto,
   CimriListingSyncInput,
   CimriListingSyncResultDto,
+  CimriListingSyncStatusDto,
   CimriProductDto,
+  EcScrapeRunEventLevel,
+  EcScrapeRunStatus,
 } from '../marketplace.models';
 import { formatAbpHttpError } from '../format-abp-http-error';
+
+const POLL_INTERVAL_MS = 1500;
+const MAX_EVENTS_KEPT = 500;
 
 @Component({
   selector: 'app-cimri-products',
@@ -17,9 +34,17 @@ import { formatAbpHttpError } from '../format-abp-http-error';
   templateUrl: './cimri-products.component.html',
   styleUrls: ['./cimri-products.component.scss'],
 })
-export class CimriProductsComponent implements OnInit {
+export class CimriProductsComponent implements OnInit, OnDestroy, AfterViewChecked {
   private readonly cimri = inject(CimriSyncService);
   private readonly permission = inject(PermissionService);
+
+  @ViewChild('eventLog') eventLogRef?: ElementRef<HTMLDivElement>;
+  private autoScroll = true;
+  private pendingScrollToBottom = false;
+
+  readonly events = signal<CimriListingSyncEventDto[]>([]);
+  private latestEventUtc: string | null = null;
+  readonly levelEnum = EcScrapeRunEventLevel;
 
   readonly products = signal<CimriProductDto[]>([]);
   readonly totalCount = signal(0);
@@ -43,6 +68,60 @@ export class CimriProductsComponent implements OnInit {
 
   readonly expandedProductId = signal<string | null>(null);
 
+  readonly syncStatus = signal<CimriListingSyncStatusDto | null>(null);
+  readonly isCancelling = signal(false);
+
+  readonly statusEnum = EcScrapeRunStatus;
+
+  readonly progressPercent = computed(() => {
+    const s = this.syncStatus();
+    if (!s) return 0;
+    return Math.round((s.progress ?? 0) * 100);
+  });
+
+  readonly etaText = computed(() => {
+    const s = this.syncStatus();
+    if (!s) return '';
+    if (!s.isActive) {
+      return this.formatDuration(s.elapsedSeconds);
+    }
+    if (s.estimatedRemainingSeconds == null) {
+      return '…';
+    }
+    return this.formatDuration(s.estimatedRemainingSeconds);
+  });
+
+  readonly elapsedText = computed(() => this.formatDuration(this.syncStatus()?.elapsedSeconds ?? 0));
+
+  readonly statusLabelKey = computed(() => {
+    const s = this.syncStatus();
+    if (!s) return '';
+    if (s.cancelRequested && s.isActive) return '::CimriStatusCancelling';
+    switch (s.status) {
+      case EcScrapeRunStatus.Pending: return '::CimriStatusPending';
+      case EcScrapeRunStatus.Running: return '::CimriStatusRunning';
+      case EcScrapeRunStatus.Completed: return '::CimriStatusCompleted';
+      case EcScrapeRunStatus.Failed: return '::CimriStatusFailed';
+      case EcScrapeRunStatus.Cancelled: return '::CimriStatusCancelled';
+      default: return '';
+    }
+  });
+
+  readonly statusVariant = computed(() => {
+    const s = this.syncStatus();
+    if (!s) return '';
+    if (s.cancelRequested && s.isActive) return 'cancelling';
+    switch (s.status) {
+      case EcScrapeRunStatus.Running: return 'running';
+      case EcScrapeRunStatus.Completed: return 'completed';
+      case EcScrapeRunStatus.Failed: return 'failed';
+      case EcScrapeRunStatus.Cancelled: return 'cancelled';
+      default: return '';
+    }
+  });
+
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
+
   readonly pageCount = computed(() => {
     const total = this.totalCount();
     const size = this.maxResultCount();
@@ -56,6 +135,25 @@ export class CimriProductsComponent implements OnInit {
 
   ngOnInit(): void {
     this.load();
+  }
+
+  ngOnDestroy(): void {
+    this.stopPolling();
+  }
+
+  ngAfterViewChecked(): void {
+    if (this.pendingScrollToBottom && this.autoScroll && this.eventLogRef?.nativeElement) {
+      const el = this.eventLogRef.nativeElement;
+      el.scrollTop = el.scrollHeight;
+      this.pendingScrollToBottom = false;
+    }
+  }
+
+  onEventLogScroll(): void {
+    const el = this.eventLogRef?.nativeElement;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    this.autoScroll = distanceFromBottom < 24;
   }
 
   load(): void {
@@ -115,6 +213,10 @@ export class CimriProductsComponent implements OnInit {
   triggerSync(): void {
     this.syncError.set(null);
     this.lastSyncResult.set(null);
+    this.syncStatus.set(null);
+    this.events.set([]);
+    this.latestEventUtc = null;
+    this.autoScroll = true;
     this.isSyncing.set(true);
 
     const payload: CimriListingSyncInput = {
@@ -128,9 +230,14 @@ export class CimriProductsComponent implements OnInit {
     this.cimri.syncListing(payload).subscribe({
       next: result => {
         this.lastSyncResult.set(result);
-        this.isSyncing.set(false);
-        this.skipCount.set(0);
-        this.load();
+        // Queue modunda API hemen döner; polling ile backend'den ilerlemeyi takip ederiz.
+        if (result.queued && result.scrapeRunId) {
+          this.startPolling(result.scrapeRunId);
+        } else {
+          this.isSyncing.set(false);
+          this.skipCount.set(0);
+          this.load();
+        }
       },
       error: err => {
         this.syncError.set(formatAbpHttpError(err));
@@ -139,12 +246,99 @@ export class CimriProductsComponent implements OnInit {
     });
   }
 
+  cancelSync(): void {
+    const status = this.syncStatus();
+    if (!status || !status.scrapeRunId || this.isCancelling()) return;
+    this.isCancelling.set(true);
+    this.cimri.cancelSync(status.scrapeRunId).subscribe({
+      next: s => {
+        this.applyStatus(s);
+        this.isCancelling.set(false);
+      },
+      error: err => {
+        this.syncError.set(formatAbpHttpError(err));
+        this.isCancelling.set(false);
+      },
+    });
+  }
+
+  private startPolling(scrapeRunId: string): void {
+    this.stopPolling();
+    this.pollOnce(scrapeRunId);
+    this.pollTimer = setInterval(() => this.pollOnce(scrapeRunId), POLL_INTERVAL_MS);
+  }
+
+  private pollOnce(scrapeRunId: string): void {
+    this.cimri.getSyncStatus(scrapeRunId, this.latestEventUtc).subscribe({
+      next: s => this.applyStatus(s),
+      error: err => {
+        this.syncError.set(formatAbpHttpError(err));
+        this.stopPolling();
+        this.isSyncing.set(false);
+      },
+    });
+  }
+
+  private applyStatus(s: CimriListingSyncStatusDto): void {
+    this.syncStatus.set(s);
+    this.appendEvents(s.events ?? []);
+    if (s.latestEventUtc) {
+      this.latestEventUtc = s.latestEventUtc;
+    }
+    if (!s.isActive) {
+      this.stopPolling();
+      this.isSyncing.set(false);
+      this.skipCount.set(0);
+      this.load();
+    }
+  }
+
+  private appendEvents(incoming: CimriListingSyncEventDto[]): void {
+    if (!incoming.length) return;
+    const current = this.events();
+    const seen = new Set(current.map(e => e.id));
+    const additions = incoming.filter(e => !seen.has(e.id));
+    if (!additions.length) return;
+    const merged = [...current, ...additions];
+    if (merged.length > MAX_EVENTS_KEPT) {
+      merged.splice(0, merged.length - MAX_EVENTS_KEPT);
+    }
+    this.events.set(merged);
+    this.pendingScrollToBottom = true;
+  }
+
+  formatTime(iso: string): string {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('tr-TR', { hour12: false });
+  }
+
+  eventLevelClass(level: EcScrapeRunEventLevel): string {
+    switch (level) {
+      case EcScrapeRunEventLevel.Success: return 'evt-success';
+      case EcScrapeRunEventLevel.Warning: return 'evt-warning';
+      case EcScrapeRunEventLevel.Error:   return 'evt-error';
+      default: return 'evt-info';
+    }
+  }
+
+  private stopPolling(): void {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
+  }
+
   trackByProductId(_idx: number, p: CimriProductDto): string {
     return p.id;
   }
 
   trackByOfferId(_idx: number, o: { id: string }): string {
     return o.id;
+  }
+
+  trackByEventId(_idx: number, e: CimriListingSyncEventDto): string {
+    return e.id;
   }
 
   formatPrice(amount?: number | null, currency?: string | null): string {
@@ -161,5 +355,19 @@ export class CimriProductsComponent implements OnInit {
     } catch {
       return `${amount.toFixed(2)} ${ccy}`;
     }
+  }
+
+  private formatDuration(totalSeconds: number): string {
+    const seconds = Math.max(0, Math.round(totalSeconds));
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    if (h > 0) {
+      return `${h}sa ${m.toString().padStart(2, '0')}dk ${s.toString().padStart(2, '0')}sn`;
+    }
+    if (m > 0) {
+      return `${m}dk ${s.toString().padStart(2, '0')}sn`;
+    }
+    return `${s}sn`;
   }
 }

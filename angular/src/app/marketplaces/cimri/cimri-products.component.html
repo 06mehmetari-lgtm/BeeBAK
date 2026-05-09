@@ -48,17 +48,129 @@
     </div>
 
     <div class="actions">
-      <button class="btn btn-primary" (click)="triggerSync()" [disabled]="isSyncing()">
+      <button
+        class="btn btn-primary"
+        (click)="triggerSync()"
+        [disabled]="isSyncing() || (syncStatus()?.isActive === true)"
+      >
         <span *ngIf="!isSyncing()">{{ '::CimriSyncNow' | abpLocalization }}</span>
-        <span *ngIf="isSyncing()">…</span>
+        <span *ngIf="isSyncing()">{{ '::CimriSyncStarting' | abpLocalization }}</span>
+      </button>
+      <button
+        type="button"
+        class="btn btn-danger cancel-btn"
+        *ngIf="syncStatus()?.isActive"
+        [disabled]="isCancelling() || syncStatus()?.cancelRequested"
+        (click)="cancelSync()"
+      >
+        <span *ngIf="!isCancelling() && !syncStatus()?.cancelRequested">
+          {{ '::CimriCancelSync' | abpLocalization }}
+        </span>
+        <span *ngIf="isCancelling() || syncStatus()?.cancelRequested">
+          {{ '::CimriCancelling' | abpLocalization }}
+        </span>
       </button>
     </div>
 
+    <div class="sync-progress" *ngIf="syncStatus() as st">
+      <div class="sync-progress__header">
+        <span class="sync-progress__badge" [class]="'state-' + statusVariant()">
+          <span class="dot"></span>
+          {{ statusLabelKey() | abpLocalization }}
+        </span>
+        <div class="sync-progress__stats">
+          <span class="num">{{ st.processedItems }}</span>
+          <span class="sep">/</span>
+          <span class="den">{{ st.totalItems || '?' }}</span>
+          <span class="muted" *ngIf="st.failedItems > 0">
+            · {{ '::CimriFailedCount' | abpLocalization: st.failedItems }}
+          </span>
+        </div>
+      </div>
+
+      <div class="sync-progress__bar" [class.indeterminate]="st.totalItems === 0 && st.isActive">
+        <div
+          class="sync-progress__fill"
+          [class]="'state-' + statusVariant()"
+          [style.width.%]="progressPercent()"
+        ></div>
+        <span class="sync-progress__percent">{{ progressPercent() }}%</span>
+      </div>
+
+      <div class="sync-progress__meta">
+        <div class="meta-item">
+          <span class="meta-label">{{ '::CimriElapsed' | abpLocalization }}</span>
+          <span class="meta-value">{{ elapsedText() }}</span>
+        </div>
+        <div class="meta-item" *ngIf="st.isActive">
+          <span class="meta-label">{{ '::CimriEstimatedRemaining' | abpLocalization }}</span>
+          <span class="meta-value">{{ etaText() }}</span>
+        </div>
+        <div class="meta-item" *ngIf="!st.isActive && st.completedUtc">
+          <span class="meta-label">{{ '::CimriFinishedAt' | abpLocalization }}</span>
+          <span class="meta-value">{{ st.completedUtc | date: 'HH:mm:ss' }}</span>
+        </div>
+      </div>
+
+      <div class="alert alert-warning sync-progress__notes" *ngIf="st.notes && !st.isActive">
+        {{ st.notes }}
+      </div>
+    </div>
+
+    <div class="event-log" *ngIf="events().length > 0">
+      <div class="event-log__header">
+        <span class="event-log__title">{{ '::CimriEventLogTitle' | abpLocalization }}</span>
+        <span class="event-log__count">{{ events().length }} {{ '::CimriEventLogEvents' | abpLocalization }}</span>
+      </div>
+      <div
+        class="event-log__body"
+        #eventLog
+        (scroll)="onEventLogScroll()"
+      >
+        <div
+          *ngFor="let evt of events(); trackBy: trackByEventId"
+          class="event-row"
+          [ngClass]="eventLevelClass(evt.level)"
+        >
+          <span class="event-row__time">{{ formatTime(evt.timestampUtc) }}</span>
+          <span class="event-row__phase">{{ evt.phase }}</span>
+          <span class="event-row__icon" aria-hidden="true">
+            <ng-container [ngSwitch]="evt.level">
+              <ng-container *ngSwitchCase="levelEnum.Success">✓</ng-container>
+              <ng-container *ngSwitchCase="levelEnum.Warning">!</ng-container>
+              <ng-container *ngSwitchCase="levelEnum.Error">✕</ng-container>
+              <ng-container *ngSwitchDefault>›</ng-container>
+            </ng-container>
+          </span>
+          <span class="event-row__index" *ngIf="evt.index != null && evt.total != null">
+            {{ evt.index }}/{{ evt.total }}
+          </span>
+          <span class="event-row__msg">
+            <span *ngIf="evt.title" class="event-row__product">{{ evt.title }}</span>
+            <span class="event-row__text">{{ evt.message }}</span>
+          </span>
+          <a
+            *ngIf="evt.url"
+            [href]="evt.url"
+            target="_blank"
+            rel="noopener"
+            class="event-row__link"
+            [title]="evt.url"
+          >↗</a>
+        </div>
+      </div>
+    </div>
+
     <div class="result" *ngIf="lastSyncResult() as r">
-      {{
-        '::CimriSyncFinishedDetail'
-          | abpLocalization: r.productsAffected:r.offersAffected:r.merchantsAffected:r.pagesFetched
-      }}
+      <ng-container *ngIf="r.queued; else inlineResult">
+        {{ '::CimriSyncQueuedInfo' | abpLocalization }}
+      </ng-container>
+      <ng-template #inlineResult>
+        {{
+          '::CimriSyncFinishedDetail'
+            | abpLocalization: r.productsAffected:r.offersAffected:r.merchantsAffected:r.pagesFetched
+        }}
+      </ng-template>
     </div>
 
     <div class="alert alert-danger" *ngIf="syncError() as err">

@@ -37,6 +37,7 @@ public class BeeBAKDbContext :
     public DbSet<EcProductImage> EcProductImages { get; set; }
     public DbSet<EcProductPriceSnapshot> EcProductPriceSnapshots { get; set; }
     public DbSet<EcScrapeRun> EcScrapeRuns { get; set; }
+    public DbSet<EcScrapeRunEvent> EcScrapeRunEvents { get; set; }
 
     public DbSet<CimriProduct> CimriProducts { get; set; }
     public DbSet<CimriOffer> CimriOffers { get; set; }
