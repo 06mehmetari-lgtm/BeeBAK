@@ -29,6 +29,10 @@ public static class CimriConsts
 
     public const int MaxOfferUrlLength = 2048;
 
+    public const int MaxMerchantProductUrlLength = 2048;
+
+    public const int MaxMerchantProductIdLength = 256;
+
     public const int MaxBadgeLength = 128;
 
     /// <summary>Cimri ürün URL'si bu site dışından gelmemelidir.</summary>

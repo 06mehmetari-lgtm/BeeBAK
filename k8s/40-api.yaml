@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: beebak-api
+  namespace: beebak
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: beebak-api
+  template:
+    metadata:
+      labels:
+        app: beebak-api
+    spec:
+      containers:
+        - name: api
+          image: beebak/api:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: "Development"
+            - name: ASPNETCORE_URLS
+              value: "http://+:8080"
+            - name: ConnectionStrings__Default
+              valueFrom:
+                secretKeyRef:
+                  name: beebak-secrets
+                  key: connectionString
+            - name: Redis__Configuration
+              valueFrom:
+                secretKeyRef:
+                  name: beebak-secrets
+                  key: redisConfig
+            - name: RabbitMq__Connections__Default__HostName
+              value: "rabbitmq"
+            - name: RabbitMq__Connections__Default__UserName
+              valueFrom:
+                secretKeyRef:
+                  name: beebak-secrets
+                  key: rabbitUser
+            - name: RabbitMq__Connections__Default__Password
+              valueFrom:
+                secretKeyRef:
+                  name: beebak-secrets
+                  key: rabbitPassword
+            - name: BackgroundJobs__IsJobExecutionEnabled
+              value: "false"
+            - name: AuthServer__RequireHttpsMetadata
+              value: "false"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: beebak-api
+  namespace: beebak
+spec:
+  selector:
+    app: beebak-api
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: beebak-api-hpa
+  namespace: beebak
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: beebak-api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+

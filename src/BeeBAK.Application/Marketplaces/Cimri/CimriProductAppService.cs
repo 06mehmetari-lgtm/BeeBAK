@@ -116,6 +116,8 @@ public class CimriProductAppService : ApplicationService, ICimriProductAppServic
                 IsCheapest = offer.IsCheapest,
                 YearsOnCimri = offer.YearsOnCimri,
                 OfferUrl = offer.OfferUrl,
+                MerchantProductUrl = offer.MerchantProductUrl,
+                MerchantProductId = offer.MerchantProductId,
                 ScrapedUtc = offer.ScrapedUtc,
             });
         }

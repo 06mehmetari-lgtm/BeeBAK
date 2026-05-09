@@ -135,6 +135,7 @@
 
       &__meta {
         display: flex;
+        flex-wrap: wrap;
         gap: 0.6rem;
         color: #6b7280;
         font-size: 0.85rem;
@@ -142,6 +143,22 @@
         .brand {
           font-weight: 600;
           color: #374151;
+        }
+
+        .cimri-id {
+          background: #eef2ff;
+          color: #3730a3;
+          padding: 0.05rem 0.4rem;
+          border-radius: 4px;
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+          font-size: 0.75rem;
+
+          code {
+            background: transparent;
+            padding: 0;
+            color: inherit;
+            font-family: inherit;
+          }
         }
       }
 
@@ -243,6 +260,25 @@
         display: block;
         color: #4b5563;
         font-size: 0.7rem;
+      }
+
+      .merchant-pid-cell code {
+        background: #f3f4f6;
+        padding: 0.05rem 0.35rem;
+        border-radius: 3px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.75rem;
+        color: #1f2937;
+        word-break: break-all;
+      }
+
+      .offer-actions-cell {
+        white-space: nowrap;
+
+        .btn-sm {
+          padding: 0.2rem 0.55rem;
+          font-size: 0.78rem;
+        }
       }
     }
   }

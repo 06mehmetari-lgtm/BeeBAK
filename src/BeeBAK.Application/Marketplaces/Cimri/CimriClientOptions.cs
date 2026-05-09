@@ -58,6 +58,29 @@ public class CimriClientOptions
     /// <summary>Ek Chromium bayrakları.</summary>
     public List<string>? ChromiumExtraArgs { get; set; }
 
+    /// <summary>Remote Selenium Grid URL (örn. http://selenium-hub:4444/wd/hub). Boşsa lokal Chrome kullanılır.</summary>
+    public string? SeleniumGridUrl { get; set; }
+
+    /// <summary>Selenium grid komut zaman aşımı (ms).</summary>
+    public int SeleniumCommandTimeoutMs { get; set; } = 120_000;
+
+    /// <summary>Görsel/font/CSS isteklerini engellemek scraping'i ciddi şekilde hızlandırır.</summary>
+    public bool BlockImages { get; set; } = true;
+    public bool BlockFonts { get; set; } = true;
+    public bool BlockStyles { get; set; } = false;
+
+    /// <summary>Sayfa başına eklenebilecek küçük rastgele gecikmenin üst sınırı (ms). 0 = kapalı.</summary>
+    public int RandomDelayJitterMs { get; set; } = 600;
+
+    /// <summary>Ürün detay job'unu kaç paralel worker'la çalıştırmak istediğin (worker host'unda).</summary>
+    public int WorkerConcurrency { get; set; } = 4;
+
+    /// <summary>Bir ürünü tekrar scrape etmeden önce beklenecek süre (saniye). Redis dedup'ta kullanılır.</summary>
+    public int DedupTtlSeconds { get; set; } = 6 * 60 * 60;
+
+    /// <summary>Kullanıcı API'den senkronizasyon talep ettiğinde queue'ya iş atan mı yoksa in-process mi çalışsın?</summary>
+    public bool UseQueue { get; set; } = true;
+
     public CimriTelegramNotificationOptions Telegram { get; set; } = new();
 }
 

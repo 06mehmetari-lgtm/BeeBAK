@@ -1,0 +1,22 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: beebak-dbmigrator
+  namespace: beebak
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: dbmigrator
+          image: beebak/dbmigrator:latest
+          imagePullPolicy: Never
+          env:
+            - name: ConnectionStrings__Default
+              valueFrom:
+                secretKeyRef:
+                  name: beebak-secrets
+                  key: connectionString
+
+

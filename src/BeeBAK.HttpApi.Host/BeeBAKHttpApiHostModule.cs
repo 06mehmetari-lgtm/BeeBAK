@@ -71,7 +71,9 @@ public class BeeBAKHttpApiHostModule : AbpModule
             });
         });
 
-        if (!hostingEnvironment.IsDevelopment())
+        var useDevCertificate = configuration.GetValue<bool>("AuthServer:UseDevelopmentCertificate");
+
+        if (!hostingEnvironment.IsDevelopment() && !useDevCertificate)
         {
             PreConfigure<AbpOpenIddictAspNetCoreOptions>(options =>
             {

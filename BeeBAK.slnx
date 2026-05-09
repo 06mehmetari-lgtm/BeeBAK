@@ -12,6 +12,7 @@
         <Project Path="src/BeeBAK.HttpApi.Client/BeeBAK.HttpApi.Client.csproj" />
         <Project Path="src/BeeBAK.DbMigrator/BeeBAK.DbMigrator.csproj" />
         <Project Path="src/BeeBAK.HttpApi.Host/BeeBAK.HttpApi.Host.csproj" />
+        <Project Path="src/BeeBAK.WorkerHost/BeeBAK.WorkerHost.csproj" />
     </Folder>
     <Folder Name="/test/">
         <Project Path="test/BeeBAK.Application.Tests/BeeBAK.Application.Tests.csproj" />

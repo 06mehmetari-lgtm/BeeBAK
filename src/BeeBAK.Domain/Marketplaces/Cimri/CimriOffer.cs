@@ -55,6 +55,12 @@ public class CimriOffer : Entity<Guid>
     /// <summary>Teklif kartından çıkarılan tıklanır URL — Cimri tarafının redirect linki.</summary>
     public string? OfferUrl { get; protected set; }
 
+    /// <summary>Cimri redirect'i takip edildiğinde ulaşılan, mağazadaki gerçek ürün sayfası URL'si.</summary>
+    public string? MerchantProductUrl { get; protected set; }
+
+    /// <summary>Mağazadaki ürün için ayıklanan id/SKU (örn. Hepsiburada SKU, Trendyol contentId, Amazon ASIN).</summary>
+    public string? MerchantProductId { get; protected set; }
+
     public DateTime ScrapedUtc { get; protected set; }
 
     public virtual CimriProduct Product { get; protected set; } = default!;
@@ -95,7 +101,9 @@ public class CimriOffer : Entity<Guid>
         bool isSponsored,
         bool isCheapest,
         int? yearsOnCimri,
-        string? offerUrl)
+        string? offerUrl,
+        string? merchantProductUrl,
+        string? merchantProductId)
     {
         OfferTitle = Truncate(offerTitle, CimriConsts.MaxOfferTitleLength);
         SellerName = Truncate(sellerName, CimriConsts.MaxSellerNameLength);
@@ -109,6 +117,8 @@ public class CimriOffer : Entity<Guid>
         IsCheapest = isCheapest;
         YearsOnCimri = yearsOnCimri;
         OfferUrl = Truncate(offerUrl, CimriConsts.MaxOfferUrlLength);
+        MerchantProductUrl = Truncate(merchantProductUrl, CimriConsts.MaxMerchantProductUrlLength);
+        MerchantProductId = Truncate(merchantProductId, CimriConsts.MaxMerchantProductIdLength);
     }
 
     private static string? Truncate(string? value, int maxLength)
