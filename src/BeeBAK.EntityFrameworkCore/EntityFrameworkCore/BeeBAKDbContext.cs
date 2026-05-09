@@ -1,5 +1,7 @@
 using BeeBAK.Ecommerce;
+using BeeBAK.EntityFrameworkCore.Cimri;
 using BeeBAK.EntityFrameworkCore.Ecommerce;
+using BeeBAK.Marketplaces.Cimri;
 using Microsoft.EntityFrameworkCore;
 using Volo.Abp.AuditLogging.EntityFrameworkCore;
 using Volo.Abp.BackgroundJobs.EntityFrameworkCore;
@@ -30,12 +32,15 @@ public class BeeBAKDbContext :
     /* Add DbSet properties for your Aggregate Roots / Entities here. */
 
     public DbSet<EcMarketplaceCategory> EcMarketplaceCategories { get; set; }
-    public DbSet<EcTrendyolNavSectionTracker> EcTrendyolNavSectionTrackers { get; set; }
     public DbSet<EcProduct> EcProducts { get; set; }
     public DbSet<EcProductDetail> EcProductDetails { get; set; }
     public DbSet<EcProductImage> EcProductImages { get; set; }
     public DbSet<EcProductPriceSnapshot> EcProductPriceSnapshots { get; set; }
     public DbSet<EcScrapeRun> EcScrapeRuns { get; set; }
+
+    public DbSet<CimriProduct> CimriProducts { get; set; }
+    public DbSet<CimriOffer> CimriOffers { get; set; }
+    public DbSet<CimriMerchant> CimriMerchants { get; set; }
 
 
     #region Entities from the modules
@@ -90,5 +95,6 @@ public class BeeBAKDbContext :
         builder.ConfigureBlobStoring();
 
         builder.ConfigureEcommerce();
+        builder.ConfigureCimri();
     }
 }

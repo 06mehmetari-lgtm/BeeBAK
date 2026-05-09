@@ -4,18 +4,17 @@ public static class BeeBAKPermissions
 {
     public const string GroupName = "BeeBAK";
 
-    public static class Trendyol
-    {
-        public const string Default = GroupName + ".Trendyol";
-
-        public const string Sync = Default + ".Sync";
-
-        /// <summary>Alt navigasyondan kök kategori meta verisini senkronlar.</summary>
-        public const string SyncNavigationCatalog = Default + ".SyncNavigationCatalog";
-    }
-
     public static class Hepsiburada
     {
         public const string Default = GroupName + ".Hepsiburada";
+    }
+
+    public static class Cimri
+    {
+        public const string Default = GroupName + ".Cimri";
+
+        public const string Sync = Default + ".Sync";
+
+        public const string Probe = Default + ".Probe";
     }
 }

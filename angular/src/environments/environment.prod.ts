@@ -13,6 +13,9 @@ const oAuthConfig = {
 
 export const environment = {
   production: true,
+  localization: {
+    defaultResourceName: 'BeeBAK',
+  },
   application: {
     baseUrl,
     name: 'BeeBAK',

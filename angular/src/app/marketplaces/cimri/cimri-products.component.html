@@ -1,0 +1,240 @@
+<section class="cimri-shell">
+  <header class="cimri-shell__header">
+    <h1>{{ '::CimriProductsTitle' | abpLocalization }}</h1>
+    <p class="muted">{{ '::CimriPullIntro' | abpLocalization }}</p>
+  </header>
+
+  <div class="cimri-shell__sync card" *ngIf="canSync()">
+    <div class="row">
+      <label class="field">
+        <span>{{ '::CimriMaxPagesLabel' | abpLocalization }}</span>
+        <input
+          type="number"
+          min="1"
+          [ngModel]="maxPagesInput()"
+          (ngModelChange)="maxPagesInput.set($event)"
+          [placeholder]="'::CimriMaxPagesPlaceholder' | abpLocalization"
+        />
+      </label>
+
+      <label class="field">
+        <span>{{ '::CimriMaxProductsLabel' | abpLocalization }}</span>
+        <input
+          type="number"
+          min="1"
+          [ngModel]="maxProductsInput()"
+          (ngModelChange)="maxProductsInput.set($event)"
+          [placeholder]="'::CimriMaxProductsPlaceholder' | abpLocalization"
+        />
+      </label>
+
+      <label class="checkbox">
+        <input
+          type="checkbox"
+          [ngModel]="includeProductDetails()"
+          (ngModelChange)="includeProductDetails.set($event)"
+        />
+        <span>{{ '::CimriIncludeOffersLabel' | abpLocalization }}</span>
+      </label>
+
+      <label class="checkbox">
+        <input
+          type="checkbox"
+          [ngModel]="expandAllOffers()"
+          (ngModelChange)="expandAllOffers.set($event)"
+        />
+        <span>{{ '::CimriExpandAllOffersLabel' | abpLocalization }}</span>
+      </label>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" (click)="triggerSync()" [disabled]="isSyncing()">
+        <span *ngIf="!isSyncing()">{{ '::CimriSyncNow' | abpLocalization }}</span>
+        <span *ngIf="isSyncing()">…</span>
+      </button>
+    </div>
+
+    <div class="result" *ngIf="lastSyncResult() as r">
+      {{
+        '::CimriSyncFinishedDetail'
+          | abpLocalization: r.productsAffected:r.offersAffected:r.merchantsAffected:r.pagesFetched
+      }}
+    </div>
+
+    <div class="alert alert-danger" *ngIf="syncError() as err">
+      <strong>{{ '::CimriSyncErrorTitle' | abpLocalization }}</strong>
+      <pre>{{ err }}</pre>
+    </div>
+  </div>
+
+  <div class="cimri-shell__filters">
+    <div class="search-row">
+      <input
+        type="search"
+        class="search"
+        [ngModel]="search()"
+        (ngModelChange)="search.set($event)"
+        (keyup.enter)="applySearch()"
+        placeholder="Title / brand / category"
+      />
+      <button class="btn" (click)="applySearch()">Filter</button>
+      <select [ngModel]="maxResultCount()" (ngModelChange)="changePageSize(+$event)">
+        <option [value]="10">10</option>
+        <option [value]="20">20</option>
+        <option [value]="50">50</option>
+        <option [value]="100">100</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="alert alert-danger" *ngIf="loadError() as err">
+    <strong>{{ '::CimriLoadErrorTitle' | abpLocalization }}</strong>
+    <pre>{{ err }}</pre>
+  </div>
+
+  <div class="cimri-shell__list" *ngIf="!isLoading(); else loadingTpl">
+    <div *ngIf="products().length === 0" class="empty">
+      {{ '::CimriEmptyList' | abpLocalization }}
+    </div>
+
+    <article
+      *ngFor="let product of products(); trackBy: trackByProductId"
+      class="card product"
+    >
+      <div class="product__main">
+        <img
+          *ngIf="product.primaryImageUrl"
+          [src]="product.primaryImageUrl"
+          [alt]="product.title"
+          loading="lazy"
+        />
+        <div class="product__body">
+          <a [href]="product.productUrl" target="_blank" rel="noopener" class="product__title">
+            {{ product.title }}
+          </a>
+          <div class="product__meta">
+            <span *ngIf="product.brandName" class="brand">{{ product.brandName }}</span>
+            <span *ngIf="product.categoryPath" class="cat">{{ product.categoryPath }}</span>
+          </div>
+          <div class="product__price-row">
+            <span class="price">
+              {{ formatPrice(product.bestPriceAmount, product.offers?.[0]?.currency) }}
+            </span>
+            <span *ngIf="product.bestPriceMerchantName" class="best-merchant">
+              {{ '::CimriBestPriceLabel' | abpLocalization: product.bestPriceMerchantName }}
+            </span>
+            <span
+              *ngIf="
+                product.previousPriceAmount != null &&
+                product.previousPriceAmount !== product.bestPriceAmount
+              "
+              class="prev-price"
+            >
+              <s>{{ formatPrice(product.previousPriceAmount) }}</s>
+            </span>
+            <span *ngIf="product.discountPercent != null" class="discount">
+              %{{ product.discountPercent }}
+            </span>
+            <span *ngIf="product.totalOfferCount != null" class="offers">
+              {{ '::CimriOfferCountLabel' | abpLocalization: product.totalOfferCount }}
+            </span>
+          </div>
+          <div class="product__actions">
+            <a [href]="product.productUrl" target="_blank" rel="noopener" class="btn btn-link">
+              {{ '::CimriOpenProduct' | abpLocalization }}
+            </a>
+            <button
+              type="button"
+              class="btn btn-link"
+              *ngIf="product.offers?.length"
+              (click)="toggleProduct(product.id)"
+            >
+              {{ expandedProductId() === product.id ? '▲' : '▼' }}
+              {{ product.offers.length }} offers
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <table
+        *ngIf="expandedProductId() === product.id && product.offers?.length"
+        class="offers-table"
+      >
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Merchant</th>
+            <th>Seller</th>
+            <th>Price</th>
+            <th>Shipping</th>
+            <th>Promotion</th>
+            <th>Updated</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            *ngFor="let offer of product.offers; trackBy: trackByOfferId"
+            [class.cheapest]="offer.isCheapest"
+            [class.sponsored]="offer.isSponsored"
+          >
+            <td>{{ offer.displayOrder }}</td>
+            <td>
+              <img
+                *ngIf="offer.merchantLogoUrl"
+                [src]="offer.merchantLogoUrl"
+                [alt]="offer.merchantName"
+                class="merchant-logo"
+                loading="lazy"
+              />
+              <div class="merchant-name">{{ offer.merchantName }}</div>
+              <div class="merchant-meta">
+                <span *ngIf="offer.merchantScore != null">★ {{ offer.merchantScore }}</span>
+                <span *ngIf="offer.yearsOnCimri != null">{{ offer.yearsOnCimri }}y</span>
+              </div>
+            </td>
+            <td>{{ offer.sellerName || '—' }}</td>
+            <td class="price-cell">
+              <strong>{{ formatPrice(offer.price, offer.currency) }}</strong>
+              <span *ngIf="offer.installmentBadge" class="installment">{{
+                offer.installmentBadge
+              }}</span>
+            </td>
+            <td>{{ offer.shippingText || '—' }}</td>
+            <td>{{ offer.promotionText || '—' }}</td>
+            <td>{{ offer.lastUpdatedText || '—' }}</td>
+            <td>
+              <a
+                *ngIf="offer.offerUrl"
+                [href]="offer.offerUrl"
+                target="_blank"
+                rel="noopener"
+                class="btn btn-link"
+                >Open</a
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </article>
+  </div>
+
+  <ng-template #loadingTpl>
+    <div class="loading">…</div>
+  </ng-template>
+
+  <footer class="cimri-shell__pager" *ngIf="totalCount() > 0">
+    <button class="btn" (click)="prevPage()" [disabled]="skipCount() === 0">‹</button>
+    <span>
+      {{ currentPage() }} / {{ pageCount() }} —
+      {{ '::CimriPagedRecordsCount' | abpLocalization: totalCount() }}
+    </span>
+    <button
+      class="btn"
+      (click)="nextPage()"
+      [disabled]="skipCount() + maxResultCount() >= totalCount()"
+    >
+      ›
+    </button>
+  </footer>
+</section>
