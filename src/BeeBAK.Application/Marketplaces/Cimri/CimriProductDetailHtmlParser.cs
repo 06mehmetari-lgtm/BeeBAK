@@ -300,4 +300,10 @@ public sealed class CimriOfferExtract
     public int? YearsOnCimri { get; set; }
 
     public string? OfferUrl { get; set; }
+
+    /// <summary>Mağazanın asıl ürün URL'si (Cimri redirect'i takip edilerek elde edilir).</summary>
+    public string? MerchantProductUrl { get; set; }
+
+    /// <summary>Mağazadaki ürün id/SKU'su (URL'den ayıklanmıştır).</summary>
+    public string? MerchantProductId { get; set; }
 }

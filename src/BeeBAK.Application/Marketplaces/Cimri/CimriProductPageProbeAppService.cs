@@ -160,7 +160,9 @@ public class CimriProductPageProbeAppService : ApplicationService, ICimriProduct
                 isSponsored: offerExtract.IsSponsored,
                 isCheapest: offerExtract.IsCheapest,
                 yearsOnCimri: offerExtract.YearsOnCimri,
-                offerUrl: offerExtract.OfferUrl);
+                offerUrl: offerExtract.OfferUrl,
+                merchantProductUrl: offerExtract.MerchantProductUrl,
+                merchantProductId: offerExtract.MerchantProductId);
 
             product.AddOffer(offer);
         }

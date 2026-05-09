@@ -62,6 +62,8 @@ export interface CimriOfferDto {
   isCheapest: boolean;
   yearsOnCimri?: number | null;
   offerUrl?: string | null;
+  merchantProductUrl?: string | null;
+  merchantProductId?: string | null;
   scrapedUtc: string;
 }
 

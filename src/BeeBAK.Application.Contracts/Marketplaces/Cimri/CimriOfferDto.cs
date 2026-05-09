@@ -43,5 +43,11 @@ public class CimriOfferDto : EntityDto<Guid>
 
     public string? OfferUrl { get; set; }
 
+    /// <summary>Cimri redirect'i takip edildikten sonra ulaşılan, mağazanın asıl ürün sayfası URL'si.</summary>
+    public string? MerchantProductUrl { get; set; }
+
+    /// <summary>Mağaza tarafındaki ürün id/SKU (Hepsiburada SKU, Trendyol contentId, Amazon ASIN, vb.).</summary>
+    public string? MerchantProductId { get; set; }
+
     public DateTime ScrapedUtc { get; set; }
 }

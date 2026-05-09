@@ -1,0 +1,23 @@
+# BeeBAK.DbMigrator — DB şemasını hazırlar, başlangıç verilerini ekler.
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+COPY common.props ./
+COPY BeeBAK.slnx ./
+COPY src/BeeBAK.Domain.Shared/BeeBAK.Domain.Shared.csproj src/BeeBAK.Domain.Shared/
+COPY src/BeeBAK.Domain/BeeBAK.Domain.csproj src/BeeBAK.Domain/
+COPY src/BeeBAK.Application.Contracts/BeeBAK.Application.Contracts.csproj src/BeeBAK.Application.Contracts/
+COPY src/BeeBAK.EntityFrameworkCore/BeeBAK.EntityFrameworkCore.csproj src/BeeBAK.EntityFrameworkCore/
+COPY src/BeeBAK.DbMigrator/BeeBAK.DbMigrator.csproj src/BeeBAK.DbMigrator/
+
+RUN dotnet restore src/BeeBAK.DbMigrator/BeeBAK.DbMigrator.csproj
+
+COPY src/ src/
+RUN dotnet publish src/BeeBAK.DbMigrator/BeeBAK.DbMigrator.csproj -c Release -o /app/publish --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+ENV DOTNET_ROLL_FORWARD=LatestMajor
+ENV DOTNET_ROLL_FORWARD_TO_PRERELEASE=1
+COPY --from=build /app/publish ./
+ENTRYPOINT ["dotnet", "BeeBAK.DbMigrator.dll"]
