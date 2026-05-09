@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using BeeBAK.Ecommerce;
+using BeeBAK.Marketplaces.Cimri;
 using BeeBAK.Marketplaces.Cimri.Logging;
 using Medallion.Threading;
 using Microsoft.Extensions.Logging;
@@ -104,14 +105,27 @@ public class CimriProductDetailJob : AsyncBackgroundJob<CimriProductDetailJobArg
         {
             var result = await ProcessAsync(args);
 
-            await _dedupCache.TryAcquireAsync(
-                args.ContentId,
-                TimeSpan.FromSeconds(Math.Max(60, _options.CurrentValue.DedupTtlSeconds)));
+            if (result.MarkVisitedInDedupCache)
+            {
+                await _dedupCache.TryAcquireAsync(
+                    args.ContentId,
+                    TimeSpan.FromSeconds(Math.Max(60, _options.CurrentValue.DedupTtlSeconds)));
+            }
 
-            await _eventLogger.LogAsync(
-                args.ScrapeRunId, EcScrapeRunEventLevel.Success, "detail",
-                $"Kaydedildi — {result.OffersAdded} teklif, {result.TouchedMerchantIds.Count} mağaza.",
-                title: args.Title, url: args.ProductUrl);
+            if (result.MarkVisitedInDedupCache)
+            {
+                await _eventLogger.LogAsync(
+                    args.ScrapeRunId, EcScrapeRunEventLevel.Success, "detail",
+                    $"Kaydedildi — {result.OffersAdded} teklif, {result.TouchedMerchantIds.Count} mağaza.",
+                    title: args.Title, url: args.ProductUrl);
+            }
+            else
+            {
+                await _eventLogger.LogAsync(
+                    args.ScrapeRunId, EcScrapeRunEventLevel.Warning, "detail",
+                    "İzin verilen mağazada geçerli teklif veya mağaza ürün kimliği yok — ürün kaydedilmedi.",
+                    title: args.Title, url: args.ProductUrl);
+            }
 
             success = true;
         }
@@ -162,7 +176,12 @@ public class CimriProductDetailJob : AsyncBackgroundJob<CimriProductDetailJobArg
             DiscountPercent = args.DiscountPercent,
         };
 
-        var result = await _ingestionService.UpsertAsync(card, args.IncludeOffers, args.ExpandAllOffers);
+        var policy = CimriRetailOfferPolicyResolver.Resolve(_options.CurrentValue, args.RetailOfferPolicy);
+        var result = await _ingestionService.UpsertAsync(
+            card,
+            args.IncludeOffers,
+            args.ExpandAllOffers,
+            policy);
         await uow.CompleteAsync();
 
         _ownLogger.LogInformation(

@@ -56,8 +56,9 @@ public class CimriProductRepository :
 
         var totalCount = await query.CountAsync(token);
 
+        // En yüksek indirim önce; NULL son (PostgreSQL ile uyumlu tek ifade)
         query = query
-            .OrderByDescending(x => x.LastSyncedUtc.HasValue)
+            .OrderByDescending(x => x.DiscountPercent ?? -1m)
             .ThenByDescending(x => x.LastSyncedUtc)
             .Skip(skipCount)
             .Take(maxResultCount);

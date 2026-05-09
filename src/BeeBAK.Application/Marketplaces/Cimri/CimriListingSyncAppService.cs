@@ -61,10 +61,11 @@ public class CimriListingSyncAppService : ApplicationService, ICimriListingSyncA
 
         var maxPages = NormalizePositive(effectiveInput.MaxPages, options.DefaultMaxPages, 1, 200);
         var maxProducts = NormalizePositive(effectiveInput.MaxProducts, options.DefaultMaxProducts, 1, 5000);
-        var includeOffers = effectiveInput.IncludeOffers;
+        var includeOffers = effectiveInput.IncludeProductDetails ?? effectiveInput.IncludeOffers;
         var expandAllOffers = effectiveInput.ExpandAllOffers;
 
-        var listingUrl = BuildListingUrl(options);
+        var listingUrl = CimriListingUrlResolver.Resolve(options, effectiveInput.ListingPageUrl);
+        var retailPolicy = CimriRetailOfferPolicyResolver.MergeFromSyncInput(options, effectiveInput);
         var loadMoreClicks = Math.Max(0, maxPages - 1);
 
         var scrapeRun = new EcScrapeRun(
@@ -89,6 +90,8 @@ public class CimriListingSyncAppService : ApplicationService, ICimriListingSyncA
                 IncludeOffers = includeOffers,
                 ExpandAllOffers = expandAllOffers,
                 ForceRefresh = effectiveInput.ForceRefresh,
+                ListingPageUrl = listingUrl,
+                RetailOfferPolicy = CimriRetailOfferPolicyResolver.ToJobPolicy(retailPolicy),
             });
 
             await _eventLogger.LogAsync(
@@ -129,7 +132,8 @@ public class CimriListingSyncAppService : ApplicationService, ICimriListingSyncA
                     .WithData("ListingUrl", listingUrl);
             }
 
-            var cards = CimriListingHtmlParser.Parse(html, options.BaseUrl);
+            var cards = CimriListingCardSorter
+                .SortByDiscountDescending(CimriListingHtmlParser.Parse(html, options.BaseUrl));
             pagesFetched = loadMoreClicks + 1;
 
             _logger.LogInformation(
@@ -142,7 +146,11 @@ public class CimriListingSyncAppService : ApplicationService, ICimriListingSyncA
             {
                 try
                 {
-                    var ingestion = await _ingestionService.UpsertAsync(card, includeOffers, expandAllOffers);
+                    var ingestion = await _ingestionService.UpsertAsync(
+                        card,
+                        includeOffers,
+                        expandAllOffers,
+                        retailPolicy);
 
                     productsAffected++;
                     offersAffected += ingestion.OffersAdded;
@@ -305,15 +313,6 @@ public class CimriListingSyncAppService : ApplicationService, ICimriListingSyncA
             Events = events,
             LatestEventUtc = events.Count > 0 ? events[^1].TimestampUtc : (DateTime?)null,
         };
-    }
-
-    private static string BuildListingUrl(CimriClientOptions options)
-    {
-        var baseUrl = (options.BaseUrl ?? "https://www.cimri.com").TrimEnd('/');
-        var path = string.IsNullOrWhiteSpace(options.DiscountedListingPath)
-            ? "/indirimli-urunler"
-            : (options.DiscountedListingPath.StartsWith('/') ? options.DiscountedListingPath : "/" + options.DiscountedListingPath);
-        return baseUrl + path;
     }
 
     private static int NormalizePositive(int? input, int defaultValue, int min, int max)

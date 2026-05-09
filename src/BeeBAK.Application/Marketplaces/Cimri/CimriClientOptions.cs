@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 namespace BeeBAK.Marketplaces.Cimri;
 
@@ -6,11 +7,36 @@ public class CimriClientOptions
 {
     public const string SectionName = "Cimri";
 
-    /// <summary>Site origin, e.g. https://www.cimri.com</summary>
-    public string BaseUrl { get; set; } = "https://www.cimri.com";
+    /// <summary>Site kök adresi — yapılandırmada verilir; kod içinde varsayılan yok.</summary>
+    public string BaseUrl { get; set; } = "";
 
-    /// <summary>İndirimli ürünler listeleme yolu.</summary>
-    public string DiscountedListingPath { get; set; } = "/indirimli-urunler";
+    /// <summary>Listeleme yolu (ör. /indirimli-urunler) — yapılandırmada verilir.</summary>
+    public string DiscountedListingPath { get; set; } = "";
+
+    /// <summary>
+    /// Tam listeleme sayfası. Doluysa BaseUrl+DiscountedListingPath yerine kullanılır.
+    /// </summary>
+    public string? ListingPageUrl { get; set; }
+
+    /// <summary>
+    /// İzin verilen Cimri ana makinesi soneki (ör. cimri.com). Boşsa <see cref="BaseUrl"/> ana makinesi kullanılır.
+    /// </summary>
+    public string? AllowedCimriHostSuffix { get; set; }
+
+    /// <summary>
+    /// Yalnızca <see cref="AllowedMerchantNameSubstrings"/> ile eşleşen mağaza tekliflerini kaydet (LIKE alt-dize).
+    /// </summary>
+    public bool RestrictOffersToAllowedMerchants { get; set; } = true;
+
+    /// <summary>Kayıtta tutulacak teklifler için mağaza ürün kimliği zorunlu.</summary>
+    public bool RequireMerchantProductId { get; set; } = true;
+
+    /// <summary>Filtre sonrası uygun teklif kalmazsa ürün satırını oluşturma / varsa sil.</summary>
+    public bool SkipProductWithoutQualifiedOffers { get; set; } = true;
+
+    /// <summary>Boşsa <see cref="CimriDefaultAllowedMerchants"/> kullanılır.</summary>
+    public List<string> AllowedMerchantNameSubstrings { get; set; } =
+        CimriDefaultAllowedMerchants.Substrings.ToList();
 
     /// <summary>Listeleme akışında en fazla okunacak sayfa sayısı (UI'dan gelmediğinde).</summary>
     public int DefaultMaxPages { get; set; } = 5;

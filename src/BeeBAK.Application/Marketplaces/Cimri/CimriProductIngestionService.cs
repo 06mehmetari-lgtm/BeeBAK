@@ -42,23 +42,175 @@ public class CimriProductIngestionService : DomainService
         CimriListingCard card,
         bool includeOffers,
         bool expandAllOffers,
+        CimriRetailOfferRuntimePolicy retailPolicy,
         CancellationToken cancellationToken = default)
     {
         var options = _options.CurrentValue;
-        var product = await _productRepository.FindByContentIdAsync(card.ContentId, includeOffers: true, cancellationToken);
         var utcNow = Clock.Now;
 
-        if (product == null)
-        {
-            product = new CimriProduct(
-                GuidGenerator.Create(),
-                card.ContentId,
-                card.ProductUrl,
-                card.Title,
-                primaryCategorySlug: card.CategorySlug,
-                brandName: null,
-                primaryImageUrl: card.ImageUrl);
+        var existing = await _productRepository.FindByContentIdAsync(card.ContentId, includeOffers: true, cancellationToken);
 
+        if (!includeOffers)
+        {
+            return await PersistListingSnapshotOnlyAsync(card, existing, utcNow, cancellationToken);
+        }
+
+        var strictRetention = retailPolicy.SkipProductIfNoQualifiedOffers;
+
+        var detail = await _detailScraper.FetchAsync(card.ProductUrl, expandAllOffers, options, cancellationToken);
+
+        if (detail == null)
+        {
+            _logger.LogWarning(
+                "Cimri PDP HTML'i parse edilemedi — {ProductUrl}",
+                card.ProductUrl);
+
+            if (strictRetention && existing != null)
+            {
+                await _productRepository.DeleteAsync(existing, autoSave: true, cancellationToken: cancellationToken);
+                return CimriIngestionResult.SkippedNoDedup();
+            }
+
+            if (strictRetention && existing == null)
+            {
+                return CimriIngestionResult.SkippedNoDedup();
+            }
+
+            return await PersistListingWithoutDetailAsync(card, existing, utcNow, cancellationToken);
+        }
+
+        var offerCap = options.MaxOffersPerProduct > 0
+            ? options.MaxOffersPerProduct
+            : int.MaxValue;
+
+        var filteredOffers = FilterOffers(detail.Offers, retailPolicy, offerCap);
+
+        if (strictRetention && filteredOffers.Count == 0)
+        {
+            if (existing != null)
+            {
+                await _productRepository.DeleteAsync(existing, autoSave: true, cancellationToken: cancellationToken);
+            }
+
+            return CimriIngestionResult.SkippedNoDedup();
+        }
+
+        var product = existing ?? new CimriProduct(
+            GuidGenerator.Create(),
+            card.ContentId,
+            card.ProductUrl,
+            card.Title,
+            primaryCategorySlug: card.CategorySlug,
+            brandName: null,
+            primaryImageUrl: card.ImageUrl);
+
+        if (existing == null)
+        {
+            await _productRepository.InsertAsync(product, autoSave: true, cancellationToken: cancellationToken);
+        }
+
+        product.ApplyListingSnapshot(
+            title: card.Title,
+            productUrl: card.ProductUrl,
+            primaryCategorySlug: card.CategorySlug,
+            brandName: product.BrandName,
+            primaryImageUrl: card.ImageUrl,
+            discountPercent: card.DiscountPercent,
+            totalOfferCount: detail.TotalOfferCount ?? card.OfferCount,
+            bestPriceAmount: card.BestPriceAmount,
+            bestPriceMerchantName: card.BestMerchantName,
+            previousPriceAmount: card.PreviousPriceAmount,
+            utcNow: utcNow);
+
+        product.ApplyDetailSnapshot(
+            categoryPath: detail.CategoryPath,
+            brandName: detail.BrandName,
+            primaryImageUrl: detail.PrimaryImageUrl,
+            totalOfferCount: detail.TotalOfferCount ?? card.OfferCount,
+            utcNow: utcNow);
+
+        product.ClearOffers();
+
+        var touchedMerchants = new HashSet<Guid>();
+        var offersAdded = 0;
+
+        foreach (var offerExtract in filteredOffers)
+        {
+            var merchant = await EnsureMerchantAsync(offerExtract, utcNow, cancellationToken);
+            touchedMerchants.Add(merchant.Id);
+
+            var offer = new CimriOffer(
+                GuidGenerator.Create(),
+                product.Id,
+                merchant.Id,
+                offerExtract.Price,
+                scrapedUtc: utcNow,
+                displayOrder: offerExtract.DisplayOrder,
+                currency: offerExtract.Currency);
+
+            offer.SetMetadata(
+                offerTitle: offerExtract.OfferTitle,
+                sellerName: offerExtract.SellerName,
+                shippingText: offerExtract.ShippingText,
+                promotionText: offerExtract.PromotionText,
+                lastUpdatedText: offerExtract.LastUpdatedText,
+                lastUpdatedUtc: offerExtract.LastUpdatedUtc,
+                installmentBadge: offerExtract.InstallmentBadge,
+                merchantScore: offerExtract.MerchantScore,
+                isSponsored: offerExtract.IsSponsored,
+                isCheapest: offerExtract.IsCheapest,
+                yearsOnCimri: offerExtract.YearsOnCimri,
+                offerUrl: offerExtract.OfferUrl,
+                merchantProductUrl: offerExtract.MerchantProductUrl,
+                merchantProductId: offerExtract.MerchantProductId);
+
+            product.AddOffer(offer);
+            offersAdded++;
+        }
+
+        await _productRepository.UpdateAsync(product, autoSave: true, cancellationToken: cancellationToken);
+
+        return new CimriIngestionResult(product.Id, offersAdded, touchedMerchants, MarkVisitedInDedupCache: true);
+    }
+
+    private static List<CimriOfferExtract> FilterOffers(
+        IReadOnlyList<CimriOfferExtract> offers,
+        CimriRetailOfferRuntimePolicy policy,
+        int offerCap)
+    {
+        IEnumerable<CimriOfferExtract> q = offers;
+        if (policy.RestrictToAllowedMerchants)
+        {
+            q = q.Where(o => CimriMerchantNameMatcher.MatchesAnySubstring(
+                o.MerchantName,
+                policy.AllowedMerchantSubstrings));
+        }
+
+        if (policy.RequireMerchantProductId)
+        {
+            q = q.Where(o => !string.IsNullOrWhiteSpace(o.MerchantProductId));
+        }
+
+        return q.Take(offerCap).ToList();
+    }
+
+    private async Task<CimriIngestionResult> PersistListingSnapshotOnlyAsync(
+        CimriListingCard card,
+        CimriProduct? existing,
+        DateTime utcNow,
+        CancellationToken cancellationToken)
+    {
+        var product = existing ?? new CimriProduct(
+            GuidGenerator.Create(),
+            card.ContentId,
+            card.ProductUrl,
+            card.Title,
+            primaryCategorySlug: card.CategorySlug,
+            brandName: null,
+            primaryImageUrl: card.ImageUrl);
+
+        if (existing == null)
+        {
             await _productRepository.InsertAsync(product, autoSave: true, cancellationToken: cancellationToken);
         }
 
@@ -75,72 +227,47 @@ public class CimriProductIngestionService : DomainService
             previousPriceAmount: card.PreviousPriceAmount,
             utcNow: utcNow);
 
-        var touchedMerchants = new HashSet<Guid>();
-        var offersAdded = 0;
+        await _productRepository.UpdateAsync(product, autoSave: true, cancellationToken: cancellationToken);
 
-        if (includeOffers)
+        return new CimriIngestionResult(product.Id, 0, new HashSet<Guid>(), MarkVisitedInDedupCache: true);
+    }
+
+    private async Task<CimriIngestionResult> PersistListingWithoutDetailAsync(
+        CimriListingCard card,
+        CimriProduct? existing,
+        DateTime utcNow,
+        CancellationToken cancellationToken)
+    {
+        var product = existing ?? new CimriProduct(
+            GuidGenerator.Create(),
+            card.ContentId,
+            card.ProductUrl,
+            card.Title,
+            primaryCategorySlug: card.CategorySlug,
+            brandName: null,
+            primaryImageUrl: card.ImageUrl);
+
+        if (existing == null)
         {
-            var detail = await _detailScraper.FetchAsync(card.ProductUrl, expandAllOffers, options, cancellationToken);
-            if (detail != null)
-            {
-                product.ApplyDetailSnapshot(
-                    categoryPath: detail.CategoryPath,
-                    brandName: detail.BrandName,
-                    primaryImageUrl: detail.PrimaryImageUrl,
-                    totalOfferCount: detail.TotalOfferCount ?? card.OfferCount,
-                    utcNow: utcNow);
-
-                product.ClearOffers();
-
-                var offerCap = options.MaxOffersPerProduct > 0
-                    ? options.MaxOffersPerProduct
-                    : detail.Offers.Count;
-
-                foreach (var offerExtract in detail.Offers.Take(offerCap))
-                {
-                    var merchant = await EnsureMerchantAsync(offerExtract, utcNow, cancellationToken);
-                    touchedMerchants.Add(merchant.Id);
-
-                    var offer = new CimriOffer(
-                        GuidGenerator.Create(),
-                        product.Id,
-                        merchant.Id,
-                        offerExtract.Price,
-                        scrapedUtc: utcNow,
-                        displayOrder: offerExtract.DisplayOrder,
-                        currency: offerExtract.Currency);
-
-                    offer.SetMetadata(
-                        offerTitle: offerExtract.OfferTitle,
-                        sellerName: offerExtract.SellerName,
-                        shippingText: offerExtract.ShippingText,
-                        promotionText: offerExtract.PromotionText,
-                        lastUpdatedText: offerExtract.LastUpdatedText,
-                        lastUpdatedUtc: offerExtract.LastUpdatedUtc,
-                        installmentBadge: offerExtract.InstallmentBadge,
-                        merchantScore: offerExtract.MerchantScore,
-                        isSponsored: offerExtract.IsSponsored,
-                        isCheapest: offerExtract.IsCheapest,
-                        yearsOnCimri: offerExtract.YearsOnCimri,
-                        offerUrl: offerExtract.OfferUrl,
-                        merchantProductUrl: offerExtract.MerchantProductUrl,
-                        merchantProductId: offerExtract.MerchantProductId);
-
-                    product.AddOffer(offer);
-                    offersAdded++;
-                }
-            }
-            else
-            {
-                _logger.LogWarning(
-                    "Cimri PDP HTML'i parse edilemedi — yalnızca listeleme alanları kaydedildi: {ProductUrl}",
-                    card.ProductUrl);
-            }
+            await _productRepository.InsertAsync(product, autoSave: true, cancellationToken: cancellationToken);
         }
+
+        product.ApplyListingSnapshot(
+            title: card.Title,
+            productUrl: card.ProductUrl,
+            primaryCategorySlug: card.CategorySlug,
+            brandName: product.BrandName,
+            primaryImageUrl: card.ImageUrl,
+            discountPercent: card.DiscountPercent,
+            totalOfferCount: card.OfferCount,
+            bestPriceAmount: card.BestPriceAmount,
+            bestPriceMerchantName: card.BestMerchantName,
+            previousPriceAmount: card.PreviousPriceAmount,
+            utcNow: utcNow);
 
         await _productRepository.UpdateAsync(product, autoSave: true, cancellationToken: cancellationToken);
 
-        return new CimriIngestionResult(product.Id, offersAdded, touchedMerchants);
+        return new CimriIngestionResult(product.Id, 0, new HashSet<Guid>(), MarkVisitedInDedupCache: true);
     }
 
     public async Task<CimriMerchant> EnsureMerchantAsync(CimriOfferExtract offer, DateTime utcNow, CancellationToken cancellationToken = default)
@@ -178,4 +305,12 @@ public class CimriProductIngestionService : DomainService
     }
 }
 
-public sealed record CimriIngestionResult(Guid ProductId, int OffersAdded, HashSet<Guid> TouchedMerchantIds);
+public sealed record CimriIngestionResult(
+    Guid ProductId,
+    int OffersAdded,
+    HashSet<Guid> TouchedMerchantIds,
+    bool MarkVisitedInDedupCache)
+{
+    public static CimriIngestionResult SkippedNoDedup() =>
+        new(Guid.Empty, 0, new HashSet<Guid>(), MarkVisitedInDedupCache: false);
+}

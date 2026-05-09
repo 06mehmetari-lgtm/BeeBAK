@@ -1,4 +1,5 @@
 using System;
+using BeeBAK.Marketplaces.Cimri;
 using Volo.Abp.BackgroundJobs;
 
 namespace BeeBAK.Marketplaces.Cimri.Jobs;
@@ -13,4 +14,10 @@ public class CimriListingDiscoveryJobArgs
     public bool IncludeOffers { get; set; } = true;
     public bool ExpandAllOffers { get; set; } = true;
     public bool ForceRefresh { get; set; }
+
+    /// <summary>Selenium ile açılacak tam listeleme URL'si (çoğu zaman senkron sırasında çözümlenmiş).</summary>
+    public string? ListingPageUrl { get; set; }
+
+    /// <summary>Null ise çalışma anında <see cref="CimriClientOptions"/> kullanılır.</summary>
+    public CimriRetailOfferJobPolicy? RetailOfferPolicy { get; set; }
 }
