@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using BeeBAK.Ecommerce;
+using BeeBAK.Marketplaces.Cimri;
 using BeeBAK.Marketplaces.Cimri.Logging;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -14,7 +15,7 @@ using Volo.Abp.Uow;
 namespace BeeBAK.Marketplaces.Cimri.Jobs;
 
 /// <summary>
-/// Cimri /indirimli-urunler sayfasını Selenium ile gezer, kart parser'ı ile ürün URL'lerini bulup
+/// Cimri liste URL'sini Selenium ile gezer, kart parser'ı ile ürün URL'lerini bulup
 /// her birini ayrı bir <see cref="CimriProductDetailJobArgs"/> olarak queue'ya iter.
 /// </summary>
 public class CimriListingDiscoveryJob : AsyncBackgroundJob<CimriListingDiscoveryJobArgs>
@@ -57,7 +58,7 @@ public class CimriListingDiscoveryJob : AsyncBackgroundJob<CimriListingDiscovery
         var maxPages = Math.Clamp(args.MaxPages <= 0 ? options.DefaultMaxPages : args.MaxPages, 1, 200);
         var maxProducts = Math.Clamp(args.MaxProducts <= 0 ? options.DefaultMaxProducts : args.MaxProducts, 1, 5000);
 
-        var listingUrl = BuildListingUrl(options);
+        var listingUrl = ResolveListingPageUrl(args, options);
         var loadMoreClicks = Math.Max(0, maxPages - 1);
 
         _ownLogger.LogInformation(
@@ -96,7 +97,10 @@ public class CimriListingDiscoveryJob : AsyncBackgroundJob<CimriListingDiscovery
             throw new BusinessException("BeeBAK:CimriListingHtmlEmpty").WithData("ListingUrl", listingUrl);
         }
 
-        var cards = CimriListingHtmlParser.Parse(html, options.BaseUrl).Take(maxProducts).ToList();
+        var cards = CimriListingCardSorter
+            .SortByDiscountDescending(CimriListingHtmlParser.Parse(html, options.BaseUrl))
+            .Take(maxProducts)
+            .ToList();
         _ownLogger.LogInformation("Cimri listing parsed {Count} cards", cards.Count);
 
         await _eventLogger.LogAsync(
@@ -159,6 +163,7 @@ public class CimriListingDiscoveryJob : AsyncBackgroundJob<CimriListingDiscovery
                 ExpandAllOffers = args.ExpandAllOffers,
                 IncludeOffers = args.IncludeOffers,
                 ForceRefresh = args.ForceRefresh,
+                RetailOfferPolicy = args.RetailOfferPolicy,
             });
 
             await _eventLogger.LogAsync(
@@ -325,12 +330,13 @@ public class CimriListingDiscoveryJob : AsyncBackgroundJob<CimriListingDiscovery
         }
     }
 
-    private static string BuildListingUrl(CimriClientOptions options)
+    private static string ResolveListingPageUrl(CimriListingDiscoveryJobArgs args, CimriClientOptions options)
     {
-        var baseUrl = (options.BaseUrl ?? "https://www.cimri.com").TrimEnd('/');
-        var path = string.IsNullOrWhiteSpace(options.DiscountedListingPath)
-            ? "/indirimli-urunler"
-            : (options.DiscountedListingPath.StartsWith('/') ? options.DiscountedListingPath : "/" + options.DiscountedListingPath);
-        return baseUrl + path;
+        if (!string.IsNullOrWhiteSpace(args.ListingPageUrl))
+        {
+            return CimriListingUrlResolver.Resolve(options, args.ListingPageUrl);
+        }
+
+        return CimriListingUrlResolver.Resolve(options, null);
     }
 }

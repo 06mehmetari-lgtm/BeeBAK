@@ -36,6 +36,8 @@ docker compose ps
 
 ```powershell
 cd C:\Users\$env:USERNAME\source\repos\BeeBAK\BeeBAK\angular
+npm install -g yarn
+yarn install
 yarn start
 # İlk derleme ~30-60 sn; "Local: http://localhost:4200" yazınca hazır
 ```

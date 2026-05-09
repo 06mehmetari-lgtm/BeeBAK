@@ -28,9 +28,17 @@ export interface EcMarketplaceProductPagedResult {
 export interface CimriListingSyncInput {
   maxPages?: number | null;
   maxProducts?: number | null;
-  includeProductDetails?: boolean;
+  /** Sunucu ile uyum: öncelik `includeProductDetails`, yoksa `includeOffers`. */
+  includeOffers?: boolean;
+  includeProductDetails?: boolean | null;
   expandAllOffers?: boolean;
   forceRefresh?: boolean;
+  /** Tam HTTPS listeleme URL'si; boş bırakılırsa sunucu Cimri:ListingPageUrl / BaseUrl+yol kullanır. */
+  listingPageUrl?: string | null;
+  restrictOffersToAllowedMerchants?: boolean | null;
+  requireMerchantProductId?: boolean | null;
+  skipProductWithoutQualifiedOffers?: boolean | null;
+  allowedMerchantSubstrings?: string[] | null;
 }
 
 export interface CimriListingSyncResultDto {

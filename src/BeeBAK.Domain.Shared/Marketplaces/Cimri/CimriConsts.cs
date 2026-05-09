@@ -35,9 +35,4 @@ public static class CimriConsts
 
     public const int MaxBadgeLength = 128;
 
-    /// <summary>Cimri ürün URL'si bu site dışından gelmemelidir.</summary>
-    public const string ExpectedHost = "www.cimri.com";
-
-    /// <summary>İndirimli ürünler listeleme yolu.</summary>
-    public const string DiscountedListingPath = "/indirimli-urunler";
 }

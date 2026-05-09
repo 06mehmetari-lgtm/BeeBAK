@@ -8,7 +8,7 @@ using HtmlAgilityPack;
 namespace BeeBAK.Marketplaces.Cimri;
 
 /// <summary>
-/// Cimri "/indirimli-urunler" listesinden ürün kartlarını okur.
+/// Cimri liste sayfalarından (indirimli ürünler, kategori vb.) ürün kartlarını okur.
 /// Her kart: title (h3), kategori slug ve contentId (anchor href), liste görseli, indirim oranı,
 /// teklif sayısı, en iyi fiyat satıcısı, en iyi fiyat ve önceki fiyat alanlarını içerir.
 /// </summary>

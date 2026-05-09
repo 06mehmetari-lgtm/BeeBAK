@@ -1,4 +1,5 @@
 using System;
+using BeeBAK.Marketplaces.Cimri;
 using Volo.Abp.BackgroundJobs;
 
 namespace BeeBAK.Marketplaces.Cimri.Jobs;
@@ -23,4 +24,7 @@ public class CimriProductDetailJobArgs
     public bool ExpandAllOffers { get; set; } = true;
     public bool IncludeOffers { get; set; } = true;
     public bool ForceRefresh { get; set; }
+
+    /// <summary>Null ise çalışma anında <see cref="CimriClientOptions"/> kullanılır.</summary>
+    public CimriRetailOfferJobPolicy? RetailOfferPolicy { get; set; }
 }

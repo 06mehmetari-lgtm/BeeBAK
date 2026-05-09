@@ -5,6 +5,19 @@
   </header>
 
   <div class="cimri-shell__sync card" *ngIf="canSync()">
+    <div class="row row--listing-url">
+      <label class="field field--grow">
+        <span>{{ '::CimriListingPageLabel' | abpLocalization }}</span>
+        <input
+          type="url"
+          [ngModel]="listingPageUrl()"
+          (ngModelChange)="listingPageUrl.set($event)"
+          [placeholder]="'::CimriListingPagePlaceholder' | abpLocalization"
+          autocomplete="url"
+        />
+      </label>
+    </div>
+
     <div class="row">
       <label class="field">
         <span>{{ '::CimriMaxPagesLabel' | abpLocalization }}</span>

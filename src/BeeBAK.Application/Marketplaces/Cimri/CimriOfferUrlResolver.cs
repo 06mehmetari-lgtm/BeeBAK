@@ -48,7 +48,7 @@ public class CimriOfferUrlResolver : ICimriOfferUrlResolver, ITransientDependenc
             return null;
         }
 
-        if (IsExternalHost(current))
+        if (IsExternalMerchantHost(current))
         {
             return current.AbsoluteUri;
         }
@@ -65,6 +65,13 @@ public class CimriOfferUrlResolver : ICimriOfferUrlResolver, ITransientDependenc
             client.DefaultRequestHeaders.Add("Cookie", options.Cookie);
         }
 
+        Uri? referrer = null;
+        if (!string.IsNullOrWhiteSpace(options.BaseUrl)
+            && Uri.TryCreate(options.BaseUrl.TrimEnd('/') + "/", UriKind.Absolute, out var originForRef))
+        {
+            referrer = originForRef;
+        }
+
         for (var hop = 0; hop < MaxRedirectHops; hop++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -73,7 +80,11 @@ public class CimriOfferUrlResolver : ICimriOfferUrlResolver, ITransientDependenc
             try
             {
                 using var request = new HttpRequestMessage(HttpMethod.Head, current);
-                request.Headers.Referrer = new Uri(options.BaseUrl.TrimEnd('/'));
+                if (referrer != null)
+                {
+                    request.Headers.Referrer = referrer;
+                }
+
                 response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
                 if (response.StatusCode == HttpStatusCode.MethodNotAllowed
@@ -82,7 +93,11 @@ public class CimriOfferUrlResolver : ICimriOfferUrlResolver, ITransientDependenc
                 {
                     response.Dispose();
                     using var getReq = new HttpRequestMessage(HttpMethod.Get, current);
-                    getReq.Headers.Referrer = new Uri(options.BaseUrl.TrimEnd('/'));
+                    if (referrer != null)
+                    {
+                        getReq.Headers.Referrer = referrer;
+                    }
+
                     response = await client.SendAsync(getReq, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
                 }
 
@@ -98,7 +113,7 @@ public class CimriOfferUrlResolver : ICimriOfferUrlResolver, ITransientDependenc
                     var next = loc.IsAbsoluteUri ? loc : new Uri(current, loc);
                     current = next;
 
-                    if (IsExternalHost(current))
+                    if (IsExternalMerchantHost(current))
                     {
                         return current.AbsoluteUri;
                     }
@@ -106,7 +121,7 @@ public class CimriOfferUrlResolver : ICimriOfferUrlResolver, ITransientDependenc
                     continue;
                 }
 
-                if (response.RequestMessage?.RequestUri is { } finalUri && IsExternalHost(finalUri))
+                if (response.RequestMessage?.RequestUri is { } finalUri && IsExternalMerchantHost(finalUri))
                 {
                     return finalUri.AbsoluteUri;
                 }
@@ -127,7 +142,7 @@ public class CimriOfferUrlResolver : ICimriOfferUrlResolver, ITransientDependenc
         return current.AbsoluteUri;
     }
 
-    private static bool TryNormalizeAbsolute(string url, out Uri uri)
+    private bool TryNormalizeAbsolute(string url, out Uri uri)
     {
         if (Uri.TryCreate(url, UriKind.Absolute, out var abs))
         {
@@ -135,7 +150,10 @@ public class CimriOfferUrlResolver : ICimriOfferUrlResolver, ITransientDependenc
             return true;
         }
 
-        if (Uri.TryCreate(new Uri("https://www.cimri.com"), url, out var rel))
+        var opt = _options.CurrentValue;
+        if (!string.IsNullOrWhiteSpace(opt.BaseUrl)
+            && Uri.TryCreate(opt.BaseUrl.TrimEnd('/') + "/", UriKind.Absolute, out var origin)
+            && Uri.TryCreate(origin, url, out var rel))
         {
             uri = rel;
             return true;
@@ -145,10 +163,20 @@ public class CimriOfferUrlResolver : ICimriOfferUrlResolver, ITransientDependenc
         return false;
     }
 
-    private static bool IsExternalHost(Uri uri)
+    /// <summary>Mağaza sitesine geçildi mi (yapılandırılan Cimri ana makinesi veya cimri.io CDN değil).</summary>
+    private bool IsExternalMerchantHost(Uri uri)
     {
-        var host = uri.Host;
-        return !host.EndsWith("cimri.com", StringComparison.OrdinalIgnoreCase)
-               && !host.EndsWith("cimri.io", StringComparison.OrdinalIgnoreCase);
+        var opt = _options.CurrentValue;
+        if (CimriCrawlHost.IsAllowedHost(uri, opt))
+        {
+            return false;
+        }
+
+        if (uri.Host.EndsWith("cimri.io", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return true;
     }
 }
