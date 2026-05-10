@@ -74,7 +74,7 @@ public class CimriTelegramProductCardSender : ICimriTelegramProductCardSender, I
             return;
         }
 
-        if (!IsEligibleShareVisual(product))
+        if (!IsEligibleShareVisual(product, opts.MinDiscountPercentForTelegram))
         {
             return;
         }
@@ -126,9 +126,9 @@ public class CimriTelegramProductCardSender : ICimriTelegramProductCardSender, I
         }
     }
 
-    private static bool IsEligibleShareVisual(CimriProduct product)
+    private static bool IsEligibleShareVisual(CimriProduct product, decimal minDiscountPercent)
     {
-        if (product.DiscountPercent is > 0m)
+        if (product.DiscountPercent >= minDiscountPercent)
         {
             return HasClickableOffer(product);
         }
