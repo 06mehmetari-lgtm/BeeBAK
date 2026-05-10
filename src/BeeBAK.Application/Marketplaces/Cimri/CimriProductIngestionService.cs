@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using BeeBAK.Marketplaces.Cimri.Jobs;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Volo.Abp.BackgroundJobs;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.Domain.Services;
 using Volo.Abp.Guids;
@@ -23,7 +25,7 @@ public class CimriProductIngestionService : DomainService
     private readonly CimriProductDetailScraper _detailScraper;
     private readonly IOptionsMonitor<CimriClientOptions> _options;
     private readonly ILogger<CimriProductIngestionService> _logger;
-    private readonly ICimriTelegramProductCardSender _telegramProductCardSender;
+    private readonly IBackgroundJobManager _backgroundJobManager;
 
     public CimriProductIngestionService(
         ICimriProductRepository productRepository,
@@ -31,14 +33,14 @@ public class CimriProductIngestionService : DomainService
         CimriProductDetailScraper detailScraper,
         IOptionsMonitor<CimriClientOptions> options,
         ILogger<CimriProductIngestionService> logger,
-        ICimriTelegramProductCardSender telegramProductCardSender)
+        IBackgroundJobManager backgroundJobManager)
     {
         _productRepository = productRepository;
         _merchantRepository = merchantRepository;
         _detailScraper = detailScraper;
         _options = options;
         _logger = logger;
-        _telegramProductCardSender = telegramProductCardSender;
+        _backgroundJobManager = backgroundJobManager;
     }
 
     public async Task<CimriIngestionResult> UpsertAsync(
@@ -177,11 +179,12 @@ public class CimriProductIngestionService : DomainService
         {
             try
             {
-                await _telegramProductCardSender.TrySendAfterProductIngestedAsync(card.ContentId, cancellationToken);
+                await _backgroundJobManager.EnqueueAsync(
+                    new CimriTelegramCardJobArgs { ContentId = card.ContentId });
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Telegram kart paylaşımı başarısız: {ContentId}", card.ContentId);
+                _logger.LogWarning(ex, "Telegram job kuyruğa eklenemedi: {ContentId}", card.ContentId);
             }
         }
 

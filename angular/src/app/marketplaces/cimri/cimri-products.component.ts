@@ -141,6 +141,10 @@ export class CimriProductsComponent implements OnInit, OnDestroy, AfterViewCheck
     }
   });
 
+  /** Senkronizasyon tamamlandığında kısa süre gösterilecek banner verisi. */
+  readonly completionBanner = signal<{ productsAffected: number } | null>(null);
+  private completionBannerTimer: ReturnType<typeof setTimeout> | null = null;
+
   private pollTimer: ReturnType<typeof setInterval> | null = null;
 
   readonly pageCount = computed(() => {
@@ -171,6 +175,7 @@ export class CimriProductsComponent implements OnInit, OnDestroy, AfterViewCheck
 
   ngOnDestroy(): void {
     this.stopPolling();
+    this.clearCompletionBannerTimer();
   }
 
   ngAfterViewChecked(): void {
@@ -359,8 +364,31 @@ export class CimriProductsComponent implements OnInit, OnDestroy, AfterViewCheck
       this.stopPolling();
       this.isSyncing.set(false);
       this.listingSyncSession.clearRun();
+      if (s.status === EcScrapeRunStatus.Completed) {
+        this.showCompletionBanner(s.processedItems);
+      }
       this.skipCount.set(0);
       this.load();
+    }
+  }
+
+  private showCompletionBanner(productsAffected: number): void {
+    this.clearCompletionBannerTimer();
+    this.completionBanner.set({ productsAffected });
+    this.completionBannerTimer = setTimeout(() => {
+      this.completionBanner.set(null);
+    }, 6000);
+  }
+
+  dismissCompletionBanner(): void {
+    this.clearCompletionBannerTimer();
+    this.completionBanner.set(null);
+  }
+
+  private clearCompletionBannerTimer(): void {
+    if (this.completionBannerTimer) {
+      clearTimeout(this.completionBannerTimer);
+      this.completionBannerTimer = null;
     }
   }
 
