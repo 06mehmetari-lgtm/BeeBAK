@@ -10,4 +10,7 @@ public interface ICimriProductAppService : IApplicationService
     Task<CimriProductDto> GetAsync(Guid id);
 
     Task<PagedResultDto<CimriProductDto>> GetListAsync(GetCimriProductListInput input);
+
+    /// <summary>Cimri ürünleri, teklifler, mağazalar ve ilgili senkron/paylaşım kayıtlarını siler.</summary>
+    Task ClearAllStoredDataAsync();
 }

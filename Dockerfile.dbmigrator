@@ -7,6 +7,7 @@ COPY BeeBAK.slnx ./
 COPY src/BeeBAK.Domain.Shared/BeeBAK.Domain.Shared.csproj src/BeeBAK.Domain.Shared/
 COPY src/BeeBAK.Domain/BeeBAK.Domain.csproj src/BeeBAK.Domain/
 COPY src/BeeBAK.Application.Contracts/BeeBAK.Application.Contracts.csproj src/BeeBAK.Application.Contracts/
+COPY src/BeeBAK.Application/BeeBAK.Application.csproj src/BeeBAK.Application/
 COPY src/BeeBAK.EntityFrameworkCore/BeeBAK.EntityFrameworkCore.csproj src/BeeBAK.EntityFrameworkCore/
 COPY src/BeeBAK.DbMigrator/BeeBAK.DbMigrator.csproj src/BeeBAK.DbMigrator/
 

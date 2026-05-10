@@ -30,7 +30,9 @@ export function formatAbpHttpError(err: unknown): string {
       return `${err.status} ${err.statusText} — ${body.trim()}`;
     }
 
-    return `${err.status} ${err.statusText}${err.message ? ` (${err.message})` : ''}`.trim();
+    const urlHint =
+      typeof err.url === 'string' && err.url.trim().length > 0 ? `\nİstek URL: ${err.url}` : '';
+    return `${err.status} ${err.statusText}${err.message ? ` (${err.message})` : ''}${urlHint}`.trim();
   }
 
   if (err instanceof Error) {

@@ -1,7 +1,11 @@
 using BeeBAK.Ecommerce;
+using BeeBAK.EntityFrameworkCore.Akakce;
 using BeeBAK.EntityFrameworkCore.Cimri;
 using BeeBAK.EntityFrameworkCore.Ecommerce;
+using BeeBAK.EntityFrameworkCore.Shares;
+using BeeBAK.Marketplaces.Akakce;
 using BeeBAK.Marketplaces.Cimri;
+using BeeBAK.Shares;
 using Microsoft.EntityFrameworkCore;
 using Volo.Abp.AuditLogging.EntityFrameworkCore;
 using Volo.Abp.BackgroundJobs.EntityFrameworkCore;
@@ -43,6 +47,12 @@ public class BeeBAKDbContext :
     public DbSet<CimriOffer> CimriOffers { get; set; }
     public DbSet<CimriMerchant> CimriMerchants { get; set; }
 
+    public DbSet<AkakceProduct> AkakceProducts { get; set; }
+    public DbSet<AkakceOffer> AkakceOffers { get; set; }
+    public DbSet<AkakceMerchant> AkakceMerchants { get; set; }
+
+    public DbSet<BeebakShareProductDayBlock> BeebakShareProductDayBlocks { get; set; }
+    public DbSet<BeebakShareCardLog> BeebakShareCardLogs { get; set; }
 
     #region Entities from the modules
 
@@ -97,5 +107,7 @@ public class BeeBAKDbContext :
 
         builder.ConfigureEcommerce();
         builder.ConfigureCimri();
+        builder.ConfigureAkakce();
+        builder.ConfigureBeebakShares();
     }
 }

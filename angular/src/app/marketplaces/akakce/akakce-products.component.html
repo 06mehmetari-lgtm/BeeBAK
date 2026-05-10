@@ -1,0 +1,323 @@
+<section class="akakce-shell">
+  <header class="akakce-shell__header">
+    <h1>{{ '::AkakceProductsTitle' | abpLocalization }}</h1>
+    <p class="muted">{{ '::AkakcePullIntro' | abpLocalization }}</p>
+  </header>
+
+  <div class="akakce-shell__sync card" *ngIf="canSync()">
+    <label class="field field--wide">
+      <span>{{ '::AkakceListingPageLabel' | abpLocalization }}</span>
+      <input
+        type="url"
+        [ngModel]="listingPageUrl()"
+        (ngModelChange)="listingPageUrl.set($event)"
+        [placeholder]="'::AkakceListingPagePlaceholder' | abpLocalization"
+      />
+    </label>
+
+    <div class="sync-form">
+      <label class="field">
+        <span>{{ '::AkakceMaxPagesLabel' | abpLocalization }}</span>
+        <input
+          type="number"
+          min="1"
+          [ngModel]="maxPagesInput()"
+          (ngModelChange)="maxPagesInput.set($event)"
+          [placeholder]="'::AkakceMaxPagesPlaceholder' | abpLocalization"
+        />
+      </label>
+
+      <label class="field">
+        <span>{{ '::AkakceMaxProductsLabel' | abpLocalization }}</span>
+        <input
+          type="number"
+          min="1"
+          [ngModel]="maxProductsInput()"
+          (ngModelChange)="maxProductsInput.set($event)"
+          [placeholder]="'::AkakceMaxProductsPlaceholder' | abpLocalization"
+        />
+      </label>
+
+      <label class="checkbox">
+        <input
+          type="checkbox"
+          [ngModel]="includeProductDetails()"
+          (ngModelChange)="includeProductDetails.set($event)"
+        />
+        <span>{{ '::AkakceIncludeOffersLabel' | abpLocalization }}</span>
+      </label>
+    </div>
+
+    <div class="actions">
+      <button
+        class="btn btn-primary"
+        (click)="triggerSync()"
+        [disabled]="isSyncing() || (syncStatus()?.isActive === true)"
+      >
+        <span *ngIf="!isSyncing()">{{ '::AkakceSyncNow' | abpLocalization }}</span>
+        <span *ngIf="isSyncing()">{{ '::AkakceSyncStarting' | abpLocalization }}</span>
+      </button>
+      <button
+        type="button"
+        class="btn btn-danger"
+        *ngIf="syncStatus()?.isActive"
+        [disabled]="isCancelling() || syncStatus()?.cancelRequested"
+        (click)="cancelSync()"
+      >
+        <span *ngIf="!isCancelling() && !syncStatus()?.cancelRequested">
+          {{ '::AkakceCancelSync' | abpLocalization }}
+        </span>
+        <span *ngIf="isCancelling() || syncStatus()?.cancelRequested">
+          {{ '::AkakceCancelling' | abpLocalization }}
+        </span>
+      </button>
+      <button
+        type="button"
+        class="btn btn-outline-danger"
+        [disabled]="isSyncing() || isClearing() || (syncStatus()?.isActive === true)"
+        (click)="clearStoredData()"
+        [title]="'::AkakceClearDatabaseConfirm' | abpLocalization"
+      >
+        <span *ngIf="!isClearing()">{{ '::AkakceClearDatabase' | abpLocalization }}</span>
+        <span *ngIf="isClearing()">{{ '::AkakceClearDatabaseWorking' | abpLocalization }}</span>
+      </button>
+    </div>
+
+    <div class="sync-progress" *ngIf="syncStatus() as st">
+      <div class="sync-progress__header">
+        <span class="sync-progress__badge" [class]="'state-' + statusVariant()">
+          <span class="dot"></span>
+          {{ statusLabelKey() | abpLocalization }}
+        </span>
+        <div class="sync-progress__stats">
+          <span class="num">{{ st.processedItems }}</span>
+          <span class="sep">/</span>
+          <span class="den">{{ st.totalItems || '?' }}</span>
+          <span class="muted" *ngIf="st.failedItems > 0">
+            {{ '::AkakceFailedCount' | abpLocalization: st.failedItems }}
+          </span>
+        </div>
+      </div>
+
+      <div class="sync-progress__bar" [class.indeterminate]="st.totalItems === 0 && st.isActive">
+        <div
+          class="sync-progress__fill"
+          [class]="'state-' + statusVariant()"
+          [style.width.%]="progressPercent()"
+        ></div>
+        <span class="sync-progress__percent">{{ progressPercent() }}%</span>
+      </div>
+
+      <div class="sync-target" *ngIf="st.resolvedListingPageUrl">
+        <span>{{ '::AkakceSyncResolvedListingTitle' | abpLocalization }}</span>
+        <a [href]="st.resolvedListingPageUrl" target="_blank" rel="noopener noreferrer">
+          {{ st.resolvedListingPageUrl }}
+        </a>
+      </div>
+
+      <div class="sync-progress__meta">
+        <div>
+          <span class="meta-label">{{ '::AkakceElapsed' | abpLocalization }}</span>
+          <strong>{{ elapsedText() }}</strong>
+        </div>
+        <div *ngIf="st.isActive">
+          <span class="meta-label">{{ '::AkakceEstimatedRemaining' | abpLocalization }}</span>
+          <strong>{{ etaText() }}</strong>
+        </div>
+        <div *ngIf="!st.isActive && st.completedUtc">
+          <span class="meta-label">{{ '::AkakceFinishedAt' | abpLocalization }}</span>
+          <strong>{{ st.completedUtc | date: 'HH:mm:ss' }}</strong>
+        </div>
+      </div>
+
+      <div class="alert alert-warning" *ngIf="st.notes && !st.isActive">
+        {{ st.notes }}
+      </div>
+    </div>
+
+    <div class="event-log" *ngIf="events().length > 0">
+      <div class="event-log__header">
+        <span>{{ '::AkakceEventLogTitle' | abpLocalization }}</span>
+        <span>{{ events().length }} {{ '::AkakceEventLogEvents' | abpLocalization }}</span>
+      </div>
+      <div class="event-log__body" #eventLog (scroll)="onEventLogScroll()">
+        <div
+          *ngFor="let evt of events(); trackBy: trackByEventId"
+          class="event-row"
+          [ngClass]="eventLevelClass(evt.level)"
+        >
+          <span class="event-row__time">{{ formatTime(evt.timestampUtc) }}</span>
+          <span class="event-row__phase">{{ evt.phase }}</span>
+          <span class="event-row__index" *ngIf="evt.index != null && evt.total != null">
+            {{ evt.index }}/{{ evt.total }}
+          </span>
+          <span class="event-row__msg">
+            <strong *ngIf="evt.title">{{ evt.title }}</strong>
+            {{ evt.message }}
+          </span>
+          <a *ngIf="evt.url" [href]="evt.url" target="_blank" rel="noopener">open</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="result" *ngIf="lastSyncResult() as r">
+      <ng-container *ngIf="r.queued; else inlineResult">
+        {{ '::AkakceSyncQueuedInfo' | abpLocalization }}
+      </ng-container>
+      <ng-template #inlineResult>
+        {{
+          '::AkakceSyncFinishedDetail'
+            | abpLocalization: r.productsAffected:r.offersAffected:r.merchantsAffected:r.pagesFetched
+        }}
+      </ng-template>
+    </div>
+
+    <div class="alert alert-danger" *ngIf="syncError() as err">
+      <strong>{{ '::AkakceSyncErrorTitle' | abpLocalization }}</strong>
+      <pre>{{ err }}</pre>
+    </div>
+
+    <div class="alert alert-danger" *ngIf="clearError() as err">
+      <strong>{{ '::AkakceClearErrorTitle' | abpLocalization }}</strong>
+      <pre>{{ err }}</pre>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <label class="field field--search">
+      <span>{{ '::Search' | abpLocalization }}</span>
+      <input
+        type="search"
+        [ngModel]="search()"
+        (ngModelChange)="search.set($event)"
+        (keyup.enter)="searchNow()"
+      />
+    </label>
+    <button class="btn btn-secondary" type="button" (click)="searchNow()">
+      {{ '::Search' | abpLocalization }}
+    </button>
+    <label class="checkbox">
+      <input
+        type="checkbox"
+        [ngModel]="includeOffers()"
+        (ngModelChange)="includeOffers.set($event); load()"
+      />
+      <span>{{ '::AkakceIncludeOffersLabel' | abpLocalization }}</span>
+    </label>
+    <select [ngModel]="maxResultCount()" (ngModelChange)="onPageSizeChange($event)">
+      <option [value]="10">10</option>
+      <option [value]="20">20</option>
+      <option [value]="50">50</option>
+    </select>
+  </div>
+
+  <div class="alert alert-danger" *ngIf="loadError() as err">
+    <strong>{{ '::AkakceLoadErrorTitle' | abpLocalization }}</strong>
+    <pre>{{ err }}</pre>
+  </div>
+
+  <div class="products card">
+    <div class="products__header">
+      <strong>{{ '::AkakcePagedRecordsCount' | abpLocalization: totalCount() }}</strong>
+      <div class="pager">
+        <button class="btn btn-light" type="button" (click)="prevPage()" [disabled]="currentPage() <= 1">
+          <
+        </button>
+        <span>{{ currentPage() }} / {{ pageCount() }}</span>
+        <button
+          class="btn btn-light"
+          type="button"
+          (click)="nextPage()"
+          [disabled]="currentPage() >= pageCount()"
+        >
+          >
+        </button>
+      </div>
+    </div>
+
+    <div class="loading" *ngIf="isLoading()">Loading...</div>
+    <div class="empty" *ngIf="!isLoading() && products().length === 0">
+      {{ '::AkakceEmptyList' | abpLocalization }}
+    </div>
+
+    <article
+      class="product-row"
+      *ngFor="let product of products(); trackBy: trackByProductId"
+      [class.expanded]="expandedProductId() === product.id"
+    >
+      <button class="product-row__main" type="button" (click)="toggleProduct(product.id)">
+        <img
+          class="product-row__image"
+          *ngIf="product.primaryImageUrl"
+          [src]="product.primaryImageUrl"
+          [alt]="product.title"
+          loading="lazy"
+        />
+        <div class="product-row__info">
+          <div class="product-row__title">{{ product.title }}</div>
+          <div class="muted">
+            {{ product.brandName || '-' }} |
+            {{ '::AkakceProductCodeLabel' | abpLocalization }} {{ product.productCode }}
+          </div>
+        </div>
+        <div class="product-row__metric">
+          <span>{{ '::AkakceBestPriceHeading' | abpLocalization }}</span>
+          <strong>{{ formatMoney(product.bestPriceAmount) }}</strong>
+        </div>
+        <div class="product-row__discount" *ngIf="product.discountPercent != null">
+          %{{ product.discountPercent }}
+        </div>
+        <div class="product-row__metric">
+          <span>{{ '::AkakceOfferCountLabel' | abpLocalization }}</span>
+          <strong>{{ product.offerCount ?? product.offers.length }}</strong>
+        </div>
+      </button>
+
+      <div class="offer-panel" *ngIf="expandedProductId() === product.id">
+        <div class="offer-panel__links">
+          <a [href]="product.productUrl" target="_blank" rel="noopener noreferrer">
+            {{ '::AkakceOpenProduct' | abpLocalization }}
+          </a>
+        </div>
+        <table *ngIf="product.offers.length > 0">
+          <thead>
+            <tr>
+              <th>Ürün</th>
+              <th>{{ '::Seller' | abpLocalization }}</th>
+              <th>{{ '::Price' | abpLocalization }}</th>
+              <th>{{ '::Shipping' | abpLocalization }}</th>
+              <th>{{ '::AkakceColumnStock' | abpLocalization }}</th>
+              <th>{{ '::AkakceColumnDelivery' | abpLocalization }}</th>
+              <th>Güncelleme</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let offer of product.offers; trackBy: trackByOfferId">
+              <td>{{ offer.offerTitle || product.title }}</td>
+              <td>{{ offer.merchantName }}</td>
+              <td>{{ formatMoney(offer.price, offer.currency) }}</td>
+              <td>{{ offer.shippingText || '-' }}</td>
+              <td>
+                {{ offer.stockText || '-' }}
+                <span *ngIf="offer.stockQuantity != null">({{ offer.stockQuantity }})</span>
+              </td>
+              <td>{{ offer.deliveryText || offer.lastUpdatedText || '-' }}</td>
+              <td>{{ offer.lastUpdatedText || (offer.lastUpdatedUtc | date: 'dd.MM.y HH:mm') || '-' }}</td>
+              <td>
+                <a
+                  *ngIf="offer.siteRedirectUrl || offer.merchantProductUrl || offer.offerUrl || offer.akakceOfferUrl"
+                  [href]="offer.siteRedirectUrl || offer.merchantProductUrl || offer.offerUrl || offer.akakceOfferUrl || ''"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {{ '::AkakceOpenAtMerchant' | abpLocalization }}
+                </a>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+  </div>
+</section>

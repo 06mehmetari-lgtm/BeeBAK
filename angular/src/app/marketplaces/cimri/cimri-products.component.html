@@ -83,6 +83,16 @@
           {{ '::CimriCancelling' | abpLocalization }}
         </span>
       </button>
+      <button
+        type="button"
+        class="btn btn-outline-danger"
+        [disabled]="isSyncing() || isClearing() || (syncStatus()?.isActive === true)"
+        (click)="clearStoredData()"
+        title="{{ '::CimriClearDatabaseConfirm' | abpLocalization }}"
+      >
+        <span *ngIf="!isClearing()">{{ '::CimriClearDatabase' | abpLocalization }}</span>
+        <span *ngIf="isClearing()">{{ '::CimriClearDatabaseWorking' | abpLocalization }}</span>
+      </button>
     </div>
 
     <div class="sync-progress" *ngIf="syncStatus() as st">
@@ -108,6 +118,22 @@
           [style.width.%]="progressPercent()"
         ></div>
         <span class="sync-progress__percent">{{ progressPercent() }}%</span>
+      </div>
+
+      <div class="sync-resolved-target" *ngIf="st.resolvedListingPageUrl">
+        <span class="sync-resolved-target__label">{{ '::CimriSyncResolvedListingTitle' | abpLocalization }}</span>
+        <a
+          class="sync-resolved-target__url"
+          [href]="st.resolvedListingPageUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+        >{{ st.resolvedListingPageUrl }}</a>
+        <span class="muted sync-resolved-target__hint" *ngIf="st.listingPageSource === 'server'">
+          {{ '::CimriSyncListingFromServerHint' | abpLocalization }}
+        </span>
+        <span class="muted sync-resolved-target__hint" *ngIf="st.listingPageSource === 'form'">
+          {{ '::CimriSyncListingFromFormHint' | abpLocalization }}
+        </span>
       </div>
 
       <div class="sync-progress__meta">
@@ -190,6 +216,11 @@
       <strong>{{ '::CimriSyncErrorTitle' | abpLocalization }}</strong>
       <pre>{{ err }}</pre>
     </div>
+
+    <div class="alert alert-danger" *ngIf="clearError() as cerr">
+      <strong>{{ '::CimriClearErrorTitle' | abpLocalization }}</strong>
+      <pre>{{ cerr }}</pre>
+    </div>
   </div>
 
   <div class="cimri-shell__filters">
@@ -212,6 +243,90 @@
     </div>
   </div>
 
+  <section class="cimri-shell__share-cards" *ngIf="showShareCardsSection()">
+    <header class="cimri-shell__share-cards-head">
+      <h2>{{ 'BeeBAK::BeebakShareDeckHeading' | abpLocalization }}</h2>
+    </header>
+    <div class="cimri-share-cards-column">
+      <article
+        *ngFor="let card of shareCards(); trackBy: trackShareCard"
+        class="share-card"
+        [ngClass]="'share-card--theme-' + card.theme"
+      >
+        <div class="share-card__noise"></div>
+        <header class="share-card__brand">
+          <div class="share-card__brand-badge">B</div>
+          <div class="share-card__brand-text">
+            <span class="share-card__brand-name">Bee BAK Sana</span>
+          </div>
+        </header>
+        <div [class]="slotGridClass(card)">
+          <div class="slot" *ngFor="let slot of card.slots">
+            <a
+              class="slot__frame slot__hit"
+              [href]="bestMerchantUrl(slot.product)"
+              target="_blank"
+              rel="noopener noreferrer"
+              [attr.aria-label]="slotImageAriaLabel(slot.product)"
+            >
+              <div class="slot__visual">
+                <div class="slot__media">
+                  <img
+                    *ngIf="slot.product.primaryImageUrl"
+                    [src]="slot.product.primaryImageUrl"
+                    [alt]=""
+                    loading="lazy"
+                    draggable="false"
+                  />
+                  <div class="slot__fallback" *ngIf="!slot.product.primaryImageUrl" aria-hidden="true">📦</div>
+                  <span
+                    class="slot__disc"
+                    *ngIf="effectiveDiscountPercent(slot.product) != null"
+                  >
+                    −{{ effectiveDiscountPercent(slot.product)! | number : '1.0-0' }}%
+                  </span>
+                </div>
+              </div>
+              <div class="slot__side" *ngIf="slotShowCaptionBox(slot.product)">
+                <div class="slot__caption-panel">
+                  <p class="slot__product-title" *ngIf="slot.product.title">{{ slot.product.title }}</p>
+                  <ng-container *ngIf="shareSlotOverlay(slot.product) as so">
+                    <div class="slot__chip-row slot__chip-row--stack">
+                      <div class="slot__chip slot__chip--avg" *ngIf="so.avg != null">
+                        <span class="slot__chip-k">Ortalama Fiyat</span>
+                        <span class="slot__chip-v">{{ formatPrice(so.avg, so.currency) }}</span>
+                      </div>
+                      <div class="slot__chip slot__chip--min">
+                        <span class="slot__chip-k">En Uygun Fiyat</span>
+                        <span class="slot__chip-v">{{ formatPrice(so.lowest, so.currency) }}</span>
+                        <span class="slot__chip-drop" *ngIf="so.bestPriceFrom != null">
+                          {{ formatPrice(so.bestPriceFrom, so.currency) }} →
+                          {{ formatPrice(so.lowest, so.currency) }}
+                        </span>
+                      </div>
+                    </div>
+                    <p class="slot__merchant-line" *ngIf="so.merchant">{{ so.merchant }}</p>
+                  </ng-container>
+                </div>
+              </div>
+            </a>
+          </div>
+        </div>
+        <footer class="share-card__footer" *ngIf="card.slots[0] as firstSlot">
+          <a
+            class="share-card__best-link"
+            [href]="bestMerchantUrl(firstSlot.product)"
+            target="_blank"
+            rel="noopener noreferrer"
+            (click)="$event.stopPropagation()"
+          >
+            En uygun teklife git →
+          </a>
+        </footer>
+      </article>
+    </div>
+  </section>
+
   <div class="alert alert-danger" *ngIf="loadError() as err">
     <strong>{{ '::CimriLoadErrorTitle' | abpLocalization }}</strong>
     <pre>{{ err }}</pre>
@@ -227,12 +342,42 @@
       class="card product"
     >
       <div class="product__main">
-        <img
-          *ngIf="product.primaryImageUrl"
-          [src]="product.primaryImageUrl"
-          [alt]="product.title"
-          loading="lazy"
-        />
+        <div class="product__thumb-wrap">
+          <img
+            *ngIf="product.primaryImageUrl"
+            [src]="product.primaryImageUrl"
+            [alt]="product.title"
+            loading="lazy"
+          />
+          <div *ngIf="!product.primaryImageUrl" class="product__thumb-placeholder" aria-hidden="true"></div>
+          <span
+            *ngIf="effectiveDiscountPercent(product) != null"
+            class="product__disc-badge"
+          >
+            −{{ effectiveDiscountPercent(product)! | number: '1.0-0' }}%
+          </span>
+        </div>
+
+        <aside
+          class="product__best-price"
+          *ngIf="productPriceColumn(product) as pc"
+          [attr.aria-label]="('::CimriBestPriceHeading' | abpLocalization)"
+        >
+          <span class="product__best-price-label">{{ '::CimriBestPriceHeading' | abpLocalization }}</span>
+          <span class="product__best-price-value">
+            {{ formatPrice(pc.amount, pc.currency) }}
+          </span>
+          <span *ngIf="pc.merchant" class="product__best-price-merchant">
+            {{ pc.merchant }}
+          </span>
+          <span
+            *ngIf="pc.previous != null && pc.previous > pc.amount"
+            class="product__best-price-was"
+          >
+            <s>{{ formatPrice(pc.previous, pc.currency) }}</s>
+          </span>
+        </aside>
+
         <div class="product__body">
           <a [href]="product.productUrl" target="_blank" rel="noopener" class="product__title">
             {{ product.title }}
@@ -244,25 +389,7 @@
               {{ '::CimriContentIdLabel' | abpLocalization }}: <code>{{ product.contentId }}</code>
             </span>
           </div>
-          <div class="product__price-row">
-            <span class="price">
-              {{ formatPrice(product.bestPriceAmount, product.offers?.[0]?.currency) }}
-            </span>
-            <span *ngIf="product.bestPriceMerchantName" class="best-merchant">
-              {{ '::CimriBestPriceLabel' | abpLocalization: product.bestPriceMerchantName }}
-            </span>
-            <span
-              *ngIf="
-                product.previousPriceAmount != null &&
-                product.previousPriceAmount !== product.bestPriceAmount
-              "
-              class="prev-price"
-            >
-              <s>{{ formatPrice(product.previousPriceAmount) }}</s>
-            </span>
-            <span *ngIf="product.discountPercent != null" class="discount">
-              %{{ product.discountPercent }}
-            </span>
+          <div class="product__offer-meta">
             <span *ngIf="product.totalOfferCount != null" class="offers">
               {{ '::CimriOfferCountLabel' | abpLocalization: product.totalOfferCount }}
             </span>

@@ -17,6 +17,7 @@
   <ItemGroup>
     <PackageReference Include="Volo.Abp.Autofac" Version="10.3.0" />
     <ProjectReference Include="..\BeeBAK.EntityFrameworkCore\BeeBAK.EntityFrameworkCore.csproj" />
+    <ProjectReference Include="..\BeeBAK.Application\BeeBAK.Application.csproj" />
     <ProjectReference Include="..\BeeBAK.Application.Contracts\BeeBAK.Application.Contracts.csproj" />
   </ItemGroup>
 

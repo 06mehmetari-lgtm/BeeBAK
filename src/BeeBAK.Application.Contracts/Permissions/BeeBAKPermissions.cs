@@ -17,4 +17,12 @@ public static class BeeBAKPermissions
 
         public const string Probe = Default + ".Probe";
     }
+
+    public static class Akakce
+    {
+        public const string Default = GroupName + ".Akakce";
+
+        public const string Sync = Default + ".Sync";
+    }
+
 }

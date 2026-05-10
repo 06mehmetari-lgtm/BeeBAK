@@ -22,6 +22,9 @@ public class CimriListingSyncAppService : ApplicationService, ICimriListingSyncA
 {
     private const int MaxEventsPerStatus = 200;
 
+    /// <summary>Liste hedefi için tek tip faz — GetStatus ile ResolvedListingPageUrl okumak için.</summary>
+    private const string ListingTargetPhase = "listing";
+
     private readonly IRepository<EcScrapeRun, Guid> _scrapeRunRepository;
     private readonly IRepository<EcScrapeRunEvent, Guid> _eventRepository;
     private readonly IOptionsMonitor<CimriClientOptions> _options;
@@ -75,6 +78,17 @@ public class CimriListingSyncAppService : ApplicationService, ICimriListingSyncA
             Clock.Now,
             triggerSource: nameof(CimriListingSyncAppService));
         await _scrapeRunRepository.InsertAsync(scrapeRun, autoSave: true);
+
+        var listingFromForm = !string.IsNullOrWhiteSpace(effectiveInput.ListingPageUrl?.Trim());
+        var listingSourceLabel = listingFromForm
+            ? "Senkron formu (tarayıcıdaki liste URL alanı)"
+            : "Sunucu yapılandırması (Cimri:ListingPageUrl — form boş bırakıldı)";
+        var listingSourceCode = listingFromForm ? "form" : "server";
+
+        await _eventLogger.LogAsync(
+            scrapeRun.Id, EcScrapeRunEventLevel.Info, ListingTargetPhase,
+            $"[listingSource:{listingSourceCode}] {listingSourceLabel}. Aşağıdaki satır linkinde ve Worker işinde aynı tam HTTPS adresi kullanılır.",
+            url: listingUrl);
 
         await _eventLogger.LogAsync(
             scrapeRun.Id, EcScrapeRunEventLevel.Info, "system",
@@ -182,7 +196,7 @@ public class CimriListingSyncAppService : ApplicationService, ICimriListingSyncA
                     scrapeRun.Id,
                     productsAffected,
                     pagesFetched,
-                    SearchQuery: options.DiscountedListingPath));
+                    SearchQuery: listingUrl));
         }
         catch (Exception ex)
         {
@@ -209,7 +223,8 @@ public class CimriListingSyncAppService : ApplicationService, ICimriListingSyncA
                   ?? throw new EntityNotFoundException(typeof(EcScrapeRun), scrapeRunId);
 
         var events = await LoadEventsAsync(scrapeRunId, sinceUtc);
-        return MapToStatus(run, events);
+        var listingMeta = await GetListingTargetMetaAsync(scrapeRunId);
+        return MapToStatus(run, events, listingMeta.url, listingMeta.source);
     }
 
     [Authorize(BeeBAKPermissions.Cimri.Sync)]
@@ -223,7 +238,8 @@ public class CimriListingSyncAppService : ApplicationService, ICimriListingSyncA
             || run.Status == EcScrapeRunStatus.Cancelled)
         {
             var events = await LoadEventsAsync(scrapeRunId, null);
-            return MapToStatus(run, events);
+            var listingMeta = await GetListingTargetMetaAsync(scrapeRunId);
+            return MapToStatus(run, events, listingMeta.url, listingMeta.source);
         }
 
         run.RequestCancel();
@@ -240,7 +256,32 @@ public class CimriListingSyncAppService : ApplicationService, ICimriListingSyncA
         _logger.LogInformation("Cimri scrape run iptal edildi: {RunId}", scrapeRunId);
 
         var afterEvents = await LoadEventsAsync(scrapeRunId, null);
-        return MapToStatus(run, afterEvents);
+        var listingMetaFinal = await GetListingTargetMetaAsync(scrapeRunId);
+        return MapToStatus(run, afterEvents, listingMetaFinal.url, listingMetaFinal.source);
+    }
+
+    private async Task<(string? url, string? source)> GetListingTargetMetaAsync(Guid scrapeRunId)
+    {
+        var rows = await _eventRepository.GetListAsync(e =>
+            e.ScrapeRunId == scrapeRunId && e.Phase == ListingTargetPhase);
+
+        var row = rows.OrderBy(e => e.TimestampUtc).FirstOrDefault();
+        if (row == null)
+        {
+            return (null, null);
+        }
+
+        string? source = null;
+        if (row.Message.StartsWith("[listingSource:form]", StringComparison.OrdinalIgnoreCase))
+        {
+            source = "form";
+        }
+        else if (row.Message.StartsWith("[listingSource:server]", StringComparison.OrdinalIgnoreCase))
+        {
+            source = "server";
+        }
+
+        return (row.Url, source);
     }
 
     private async Task<List<CimriListingSyncEventDto>> LoadEventsAsync(Guid scrapeRunId, DateTime? sinceUtc)
@@ -273,7 +314,11 @@ public class CimriListingSyncAppService : ApplicationService, ICimriListingSyncA
         }).ToList();
     }
 
-    private CimriListingSyncStatusDto MapToStatus(EcScrapeRun run, List<CimriListingSyncEventDto> events)
+    private CimriListingSyncStatusDto MapToStatus(
+        EcScrapeRun run,
+        List<CimriListingSyncEventDto> events,
+        string? resolvedListingPageUrl = null,
+        string? listingPageSource = null)
     {
         var now = Clock.Now;
         var endTime = run.CompletedUtc ?? now;
@@ -312,6 +357,8 @@ public class CimriListingSyncAppService : ApplicationService, ICimriListingSyncA
             IsActive = isActive,
             Events = events,
             LatestEventUtc = events.Count > 0 ? events[^1].TimestampUtc : (DateTime?)null,
+            ResolvedListingPageUrl = resolvedListingPageUrl,
+            ListingPageSource = listingPageSource,
         };
     }
 

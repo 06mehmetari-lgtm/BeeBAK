@@ -71,4 +71,51 @@ public class CimriProductRepository :
         var list = await query.ToListAsync(token);
         return (list, totalCount);
     }
+
+    public async Task<List<CimriProduct>> GetShareDeckCandidatesAsync(
+        int take,
+        IReadOnlyCollection<string> excludeContentIds,
+        CancellationToken cancellationToken = default)
+    {
+        var token = GetCancellationToken(cancellationToken);
+        var exclude = excludeContentIds.Count > 0 ? excludeContentIds.ToHashSet() : null;
+
+        // Havuz: aktif ürünler; indirim / görsel şartını SQL'de sıkı tutmayıp bellekte süzeriz —
+        // yeni çekilen kayıtlarda DiscountPercent veya görsel henüz dolu olmayabilir.
+        var query = (await GetQueryableAsync()).Where(p => p.IsActive);
+
+        if (exclude != null && exclude.Count > 0)
+        {
+            query = query.Where(p => !exclude.Contains(p.ContentId));
+        }
+
+        var fetch = Math.Max(take * 6, 64);
+
+        query = query
+            .Include(p => p.Offers)
+            .OrderByDescending(p => p.DiscountPercent ?? -1m)
+            .ThenByDescending(p => p.LastSyncedUtc)
+            .Take(fetch);
+
+        var list = await query.ToListAsync(token);
+
+        return list
+            .Where(HasMeaningfulDiscount)
+            .Where(p => p.Offers.Any(o =>
+                !string.IsNullOrWhiteSpace(o.MerchantProductUrl) || !string.IsNullOrWhiteSpace(o.OfferUrl)))
+            .Take(take)
+            .ToList();
+    }
+
+    private static bool HasMeaningfulDiscount(CimriProduct p)
+    {
+        if (p.DiscountPercent is > 0m)
+        {
+            return true;
+        }
+
+        return p.PreviousPriceAmount is > 0m
+            && p.BestPriceAmount is > 0m
+            && p.PreviousPriceAmount > p.BestPriceAmount;
+    }
 }

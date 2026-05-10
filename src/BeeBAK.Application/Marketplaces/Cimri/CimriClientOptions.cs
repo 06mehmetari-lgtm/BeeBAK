@@ -10,11 +10,11 @@ public class CimriClientOptions
     /// <summary>Site kök adresi — yapılandırmada verilir; kod içinde varsayılan yok.</summary>
     public string BaseUrl { get; set; } = "";
 
-    /// <summary>Listeleme yolu (ör. /indirimli-urunler) — yapılandırmada verilir.</summary>
+    /// <summary>Eski yapılandırma alanı; listeleme adresi artık <see cref="ListingPageUrl"/> veya API ile verilir.</summary>
     public string DiscountedListingPath { get; set; } = "";
 
     /// <summary>
-    /// Tam listeleme sayfası. Doluysa BaseUrl+DiscountedListingPath yerine kullanılır.
+    /// Sunucu varsayılanı: Selenium ile açılacak tam HTTPS listeleme URL'si (ör. indirimli ürün veya kategori sayfası).
     /// </summary>
     public string? ListingPageUrl { get; set; }
 
@@ -105,6 +105,12 @@ public class CimriClientOptions
     public bool UseQueue { get; set; } = true;
 
     /// <summary>
+    /// Discovery'nin ürün detaylarını tek tek yerine her RabbitMQ mesajında kaç ürünle gruplayacağı (1 = eski davranış).
+    /// İptal sonrası kuyrukta bekleyen mesaj sayısını düşürür.
+    /// </summary>
+    public int ProductDetailEnqueueBatchSize { get; set; } = 20;
+
+    /// <summary>
     /// Cimri'nin <c>/offer/{id}</c> redirect URL'lerini, PDP'yi açtığımız aynı Selenium oturumunda
     /// yeni tab açarak çözer. Cimri direkt HEAD/GET'e 403 dönüyor; tarayıcı oturumunda redirect chain
     /// güvenli şekilde takip ediliyor. Default: true.
@@ -137,4 +143,13 @@ public class CimriTelegramNotificationOptions
     public string? BotToken { get; set; }
 
     public string? ChatId { get; set; }
+
+    /// <summary>Ürün veritabanına yazıldığında Telegram'a kart mesajı gönder (bot token + chat id doluysa).</summary>
+    public bool ShareProductCardsOnIngest { get; set; } = true;
+
+    /// <summary>Aynı ürün için bu süre içinde tekrar Telegram gönderilmez (spam önleme).</summary>
+    public int TelegramCardDedupHours { get; set; } = 6;
+
+    /// <summary>Telegram kartı için gereken minimum indirim yüzdesi.</summary>
+    public decimal MinDiscountPercentForTelegram { get; set; } = 50m;
 }

@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\BeeBAK.Domain\BeeBAK.Domain.csproj" />
+    <ProjectReference Include="..\BeeBAK.Domain.Shared\BeeBAK.Domain.Shared.csproj" />
   </ItemGroup>
 
   <ItemGroup>

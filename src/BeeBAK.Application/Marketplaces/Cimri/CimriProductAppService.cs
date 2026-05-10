@@ -11,20 +11,29 @@ using Volo.Abp.Domain.Repositories;
 
 namespace BeeBAK.Marketplaces.Cimri;
 
-[Authorize(BeeBAKPermissions.Cimri.Default)]
 public class CimriProductAppService : ApplicationService, ICimriProductAppService
 {
     private readonly ICimriProductRepository _productRepository;
     private readonly IRepository<CimriMerchant, Guid> _merchantRepository;
+    private readonly ICimriStoredDataCleaner _cimriStoredDataCleaner;
 
     public CimriProductAppService(
         ICimriProductRepository productRepository,
-        IRepository<CimriMerchant, Guid> merchantRepository)
+        IRepository<CimriMerchant, Guid> merchantRepository,
+        ICimriStoredDataCleaner cimriStoredDataCleaner)
     {
         _productRepository = productRepository;
         _merchantRepository = merchantRepository;
+        _cimriStoredDataCleaner = cimriStoredDataCleaner;
     }
 
+    [Authorize(BeeBAKPermissions.Cimri.Sync)]
+    public virtual async Task ClearAllStoredDataAsync()
+    {
+        await _cimriStoredDataCleaner.ClearAllAsync();
+    }
+
+    [Authorize(BeeBAKPermissions.Cimri.Default)]
     public virtual async Task<CimriProductDto> GetAsync(Guid id)
     {
         var product = await _productRepository.GetAsync(id);
@@ -40,6 +49,7 @@ public class CimriProductAppService : ApplicationService, ICimriProductAppServic
         return await MapWithMerchantsAsync(withOffers);
     }
 
+    [Authorize(BeeBAKPermissions.Cimri.Default)]
     public virtual async Task<PagedResultDto<CimriProductDto>> GetListAsync(GetCimriProductListInput input)
     {
         var maxResult = input.MaxResultCount <= 0 ? 24 : Math.Min(input.MaxResultCount, 100);
