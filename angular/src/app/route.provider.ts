@@ -39,8 +39,17 @@ function configureRoutes() {
       parentName: '::Menu:Marketplaces',
       layout: eLayoutType.application,
       iconClass: 'fas fa-truck',
-      order: 2,
+      order: 3,
       requiredPolicy: 'BeeBAK.Hepsiburada',
+    },
+    {
+      path: '/marketplaces/akakce/products',
+      name: '::Menu:MarketplacesAkakce',
+      parentName: '::Menu:Marketplaces',
+      layout: eLayoutType.application,
+      iconClass: 'fas fa-chart-line',
+      order: 2,
+      requiredPolicy: 'BeeBAK.Akakce',
     },
   ]);
 }

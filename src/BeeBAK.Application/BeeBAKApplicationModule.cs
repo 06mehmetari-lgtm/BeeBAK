@@ -2,6 +2,8 @@
 using System.Net;
 using System.Net.Http;
 using BeeBAK.Marketplaces;
+using BeeBAK.Marketplaces.Akakce;
+using BeeBAK.Marketplaces.Akakce.Jobs;
 using BeeBAK.Marketplaces.Cimri;
 using BeeBAK.Marketplaces.Cimri.Jobs;
 using Medallion.Threading;
@@ -46,6 +48,8 @@ public class BeeBAKApplicationModule : AbpModule
 
         context.Services.Configure<CimriClientOptions>(
             configuration.GetSection(CimriClientOptions.SectionName));
+        context.Services.Configure<AkakceClientOptions>(
+            configuration.GetSection(AkakceClientOptions.SectionName));
 
         ConfigureHttpClients(context);
         ConfigureDistributedCache(context, configuration);
@@ -117,9 +121,17 @@ public class BeeBAKApplicationModule : AbpModule
             options.IsJobExecutionEnabled = jobsEnabled;
             options.AddJob<CimriListingDiscoveryJob>();
             options.AddJob<CimriProductDetailJob>();
+            options.AddJob<CimriProductDetailBatchJob>();
+            options.AddJob<AkakceListingDiscoveryJob>();
+            options.AddJob<AkakceProductDetailJob>();
+            options.AddJob<AkakceProductDetailBatchJob>();
         });
 
         context.Services.AddTransient<CimriListingDiscoveryJob>();
         context.Services.AddTransient<CimriProductDetailJob>();
+        context.Services.AddTransient<CimriProductDetailBatchJob>();
+        context.Services.AddTransient<AkakceListingDiscoveryJob>();
+        context.Services.AddTransient<AkakceProductDetailJob>();
+        context.Services.AddTransient<AkakceProductDetailBatchJob>();
     }
 }

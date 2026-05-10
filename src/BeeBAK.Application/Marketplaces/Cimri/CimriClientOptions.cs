@@ -149,4 +149,7 @@ public class CimriTelegramNotificationOptions
 
     /// <summary>Aynı ürün için bu süre içinde tekrar Telegram gönderilmez (spam önleme).</summary>
     public int TelegramCardDedupHours { get; set; } = 6;
+
+    /// <summary>Telegram kartı için gereken minimum indirim yüzdesi.</summary>
+    public decimal MinDiscountPercentForTelegram { get; set; } = 50m;
 }

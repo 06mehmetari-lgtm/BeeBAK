@@ -1,6 +1,7 @@
 export enum MarketplaceKind {
   Hepsiburada = 1,
   Cimri = 3,
+  Akakce = 4,
 }
 
 export interface EcMarketplaceProductDto {
@@ -151,6 +152,112 @@ export interface CimriProductPagedResult {
 }
 
 export interface GetCimriProductListInput {
+  skipCount?: number;
+  maxResultCount?: number;
+  search?: string | null;
+  includeOffers?: boolean;
+}
+
+export interface AkakceListingSyncInput {
+  maxPages?: number | null;
+  maxProducts?: number | null;
+  includeProductDetails?: boolean | null;
+  forceRefresh?: boolean;
+  listingPageUrl?: string | null;
+}
+
+export interface AkakceListingSyncResultDto {
+  scrapeRunId: string;
+  pagesFetched: number;
+  productsAffected: number;
+  offersAffected: number;
+  merchantsAffected: number;
+  resolvedListingPageUrl?: string | null;
+  queued?: boolean;
+}
+
+export interface AkakceListingSyncEventDto {
+  id: string;
+  timestampUtc: string;
+  level: EcScrapeRunEventLevel;
+  phase: string;
+  message: string;
+  title?: string | null;
+  url?: string | null;
+  index?: number | null;
+  total?: number | null;
+}
+
+export interface AkakceListingSyncStatusDto {
+  scrapeRunId: string;
+  status: EcScrapeRunStatus;
+  totalItems: number;
+  processedItems: number;
+  failedItems: number;
+  cancelRequested: boolean;
+  startedUtc: string;
+  completedUtc?: string | null;
+  notes?: string | null;
+  progress: number;
+  elapsedSeconds: number;
+  estimatedRemainingSeconds?: number | null;
+  isActive: boolean;
+  events: AkakceListingSyncEventDto[];
+  latestEventUtc?: string | null;
+  resolvedListingPageUrl?: string | null;
+  listingPageSource?: string | null;
+}
+
+export interface AkakceOfferDto {
+  id: string;
+  merchantId: string;
+  merchantName: string;
+  merchantSlug?: string | null;
+  merchantLogoUrl?: string | null;
+  displayOrder: number;
+  offerTitle?: string | null;
+  price: number;
+  currency: string;
+  shippingText?: string | null;
+  shippingAmount?: number | null;
+  isFreeShipping?: boolean | null;
+  stockText?: string | null;
+  stockQuantity?: number | null;
+  deliveryText?: string | null;
+  lastUpdatedText?: string | null;
+  lastUpdatedUtc?: string | null;
+  isSponsored: boolean;
+  isCheapest: boolean;
+  offerUrl?: string | null;
+  akakceOfferUrl?: string | null;
+  merchantProductUrl?: string | null;
+  siteRedirectUrl?: string | null;
+  scrapedUtc: string;
+}
+
+export interface AkakceProductDto {
+  id: string;
+  productCode: string;
+  productUrl: string;
+  categoryPath?: string | null;
+  title: string;
+  brandName?: string | null;
+  primaryImageUrl?: string | null;
+  discountPercent?: number | null;
+  bestPriceAmount?: number | null;
+  previousPriceAmount?: number | null;
+  offerCount?: number | null;
+  isActive: boolean;
+  lastSyncedUtc?: string | null;
+  offers: AkakceOfferDto[];
+}
+
+export interface AkakceProductPagedResult {
+  items: AkakceProductDto[];
+  totalCount: number;
+}
+
+export interface GetAkakceProductListInput {
   skipCount?: number;
   maxResultCount?: number;
   search?: string | null;

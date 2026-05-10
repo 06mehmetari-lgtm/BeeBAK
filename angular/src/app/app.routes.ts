@@ -22,6 +22,13 @@ export const APP_ROUTES: Routes = [
         data: { requiredPolicy: 'BeeBAK.Cimri' },
       },
       {
+        path: 'akakce/products',
+        loadComponent: () =>
+          import('./marketplaces/akakce/akakce-products.component').then(m => m.AkakceProductsComponent),
+        canActivate: [permissionGuard],
+        data: { requiredPolicy: 'BeeBAK.Akakce' },
+      },
+      {
         path: 'hepsiburada',
         loadComponent: () =>
           import('./marketplaces/hepsiburada/hepsiburada-page.component').then(m => m.HepsiburadaPageComponent),
