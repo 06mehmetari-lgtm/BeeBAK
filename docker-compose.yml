@@ -160,7 +160,8 @@ services:
       Cimri__Telegram__BotToken: "7826351835:AAHMrtWAX443TCB3__N66yl1j-yPFRs8Q38"
       Cimri__Telegram__ChatId: "-1003910000677"
       Cimri__Telegram__ShareProductCardsOnIngest: "true"
-      Cimri__Telegram__MinDiscountPercentForTelegram: "50"
+      Cimri__Telegram__MinDiscountPercentForTelegram: "0"
+      Cimri__Telegram__TelegramCardDedupHours: "0"
     ports:
       - "44381:8080"
     volumes:
@@ -235,7 +236,8 @@ services:
       Cimri__Telegram__BotToken: "7826351835:AAHMrtWAX443TCB3__N66yl1j-yPFRs8Q38"
       Cimri__Telegram__ChatId: "-1003910000677"
       Cimri__Telegram__ShareProductCardsOnIngest: "true"
-      Cimri__Telegram__MinDiscountPercentForTelegram: "50"
+      Cimri__Telegram__MinDiscountPercentForTelegram: "0"
+      Cimri__Telegram__TelegramCardDedupHours: "0"
     deploy:
       replicas: 2
       resources:

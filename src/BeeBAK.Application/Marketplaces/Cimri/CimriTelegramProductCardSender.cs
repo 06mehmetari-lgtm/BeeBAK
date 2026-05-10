@@ -82,8 +82,8 @@ public class CimriTelegramProductCardSender : ICimriTelegramProductCardSender, I
         }
 
         var merchantIds = product.Offers.Select(o => o.MerchantId).Distinct().ToList();
-        var mq = await _merchantRepository.GetQueryableAsync();
-        var merchantsList = mq.Where(m => merchantIds.Contains(m.Id)).ToList();
+        var merchantsList = await _merchantRepository.GetListAsync(
+            m => merchantIds.Contains(m.Id), cancellationToken: cancellationToken);
         var merchantsById = merchantsList.ToDictionary(m => m.Id, m => m.Name);
 
         var bestUrl = PickBestMerchantUrl(product);
