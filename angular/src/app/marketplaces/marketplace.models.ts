@@ -33,7 +33,7 @@ export interface CimriListingSyncInput {
   includeProductDetails?: boolean | null;
   expandAllOffers?: boolean;
   forceRefresh?: boolean;
-  /** Tam HTTPS listeleme URL'si; boş bırakılırsa sunucu Cimri:ListingPageUrl / BaseUrl+yol kullanır. */
+  /** Tam HTTPS listeleme URL'si; boş bırakılırsa yalnızca sunucu Cimri:ListingPageUrl (BaseUrl+yol birleştirilmez). */
   listingPageUrl?: string | null;
   restrictOffersToAllowedMerchants?: boolean | null;
   requireMerchantProductId?: boolean | null;
@@ -94,6 +94,10 @@ export interface CimriListingSyncStatusDto {
   isActive: boolean;
   events: CimriListingSyncEventDto[];
   latestEventUtc?: string | null;
+  /** Bu çalışmada kullanılan tam liste HTTPS adresi (API durum sorgusu). */
+  resolvedListingPageUrl?: string | null;
+  /** 'form' | 'server' — adres senkron formundan mı, Cimri:ListingPageUrl'den mi geldi. */
+  listingPageSource?: string | null;
 }
 
 export interface CimriOfferDto {

@@ -60,3 +60,46 @@ kubectl scale deploy/chrome-node --replicas=15 -n beebak
 kubectl port-forward svc/rabbitmq 15672:15672 -n beebak
 # tarayıcı: http://localhost:15672  (kullanıcı: beebak / şifre: beebak)
 ```
+
+
+
+## PC de zaten vardı PC yeniden başlattım ne yapcam
+
+```powershell
+# Worker pod'larını manuel ölçekle
+1. Proje dizinine geç
+
+cd C:\Users\$env:USERNAME\source\repos\BeeBAK\BeeBAK
+2. Image’ları build et
+
+docker build -t beebak/api:latest        -f Dockerfile.api        .
+docker build -t beebak/worker:latest     -f Dockerfile.worker     .
+docker build -t beebak/dbmigrator:latest -f Dockerfile.dbmigrator .
+
+3. Namespace, secret ve altyapı (Postgres, Redis, RabbitMQ, Selenium)
+
+kubectl apply -f k8s/00-namespace.yaml
+kubectl apply -f k8s/20-secrets.yaml
+kubectl apply -f k8s/10-postgres.yaml
+kubectl apply -f k8s/11-redis.yaml
+kubectl apply -f k8s/12-rabbitmq.yaml
+kubectl apply -f k8s/13-selenium-grid.yaml
+
+4. DB migrator job ve tamamlanmasını bekle
+
+kubectl apply -f k8s/30-dbmigrator-job.yaml
+kubectl wait --for=condition=complete --timeout=300s job/beebak-dbmigrator -n beebak
+5. API, worker ve ingress
+
+kubectl apply -f k8s/40-api.yaml
+kubectl apply -f k8s/41-worker.yaml
+kubectl apply -f k8s/50-ingress.yaml
+6. (İsteğe bağlı) Erişim — README’deki gibi API için port-forward
+
+
+kubectl port-forward svc/beebak-api 44381:80 -n beebak
+```
+
+
+
+

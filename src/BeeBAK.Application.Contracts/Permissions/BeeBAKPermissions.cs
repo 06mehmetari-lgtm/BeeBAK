@@ -17,4 +17,5 @@ public static class BeeBAKPermissions
 
         public const string Probe = Default + ".Probe";
     }
+
 }

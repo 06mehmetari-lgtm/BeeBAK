@@ -54,6 +54,10 @@ public class BeeBAKEntityFrameworkCoreModule : AbpModule
             options.AddRepository<CimriMerchant, Cimri.CimriMerchantRepository>();
         });
 
+        context.Services.AddTransient<
+            BeeBAK.Marketplaces.Cimri.ICimriStoredDataCleaner,
+            Cimri.CimriStoredDataCleaner>();
+
         if (AbpStudioAnalyzeHelper.IsInAnalyzeMode)
         {
             return;

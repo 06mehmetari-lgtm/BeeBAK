@@ -24,7 +24,7 @@ public class CimriListingSyncInput
     [JsonPropertyName("forceRefresh")]
     public bool ForceRefresh { get; set; }
 
-    /// <summary>Selenium ile açılacak tam HTTPS listeleme URL'si. Boşsa yapılandırma (Cimri:ListingPageUrl veya BaseUrl+yol).</summary>
+    /// <summary>Selenium ile açılacak tam HTTPS listeleme URL'si. Boşsa yalnızca Cimri:ListingPageUrl (BaseUrl+yol birleştirilmez).</summary>
     [JsonPropertyName("listingPageUrl")]
     public string? ListingPageUrl { get; set; }
 

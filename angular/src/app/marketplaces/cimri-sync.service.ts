@@ -47,6 +47,14 @@ export class CimriSyncService {
     );
   }
 
+  /** Cimri ürünleri ve ilişkili kayıtları siler (yeniden çekim için sıfır başlangıç). */
+  clearAllStoredData(): Observable<void> {
+    return this.http.post<void>(
+      `${this.root}/api/app/cimri-product/clear-all-stored-data`,
+      {},
+    );
+  }
+
   getList(input: GetCimriProductListInput): Observable<CimriProductPagedResult> {
     let params = new HttpParams()
       .set('SkipCount', input.skipCount ?? 0)
