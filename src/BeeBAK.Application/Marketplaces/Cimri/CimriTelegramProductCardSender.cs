@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Threading;
@@ -100,12 +102,18 @@ public class CimriTelegramProductCardSender : ICimriTelegramProductCardSender, I
         var chatId = opts.ChatId.Trim();
         var client = _httpClientFactory.CreateClient(HttpClientName);
 
-        var photoUrl = product.PrimaryImageUrl?.Trim();
-        var ok = false;
-        if (!string.IsNullOrWhiteSpace(photoUrl) && Uri.TryCreate(photoUrl, UriKind.Absolute, out var pu) &&
-            (pu.Scheme == Uri.UriSchemeHttp || pu.Scheme == Uri.UriSchemeHttps))
+        // Ürün kartını render et ve Telegram'a yükle
+        var ok = await TrySendRenderedCardAsync(client, token, chatId, product, merchantsById, caption, cancellationToken);
+
+        // Kart render başarısız olursa ürün fotoğrafına, o da başarısız olursa metin mesajına düş
+        if (!ok)
         {
-            ok = await TrySendPhotoAsync(client, token, chatId, photoUrl, caption, cancellationToken);
+            var photoUrl = product.PrimaryImageUrl?.Trim();
+            if (!string.IsNullOrWhiteSpace(photoUrl) && Uri.TryCreate(photoUrl, UriKind.Absolute, out var pu) &&
+                (pu.Scheme == Uri.UriSchemeHttp || pu.Scheme == Uri.UriSchemeHttps))
+            {
+                ok = await TrySendPhotoAsync(client, token, chatId, photoUrl, caption, cancellationToken);
+            }
         }
 
         if (!ok)
@@ -298,6 +306,89 @@ public class CimriTelegramProductCardSender : ICimriTelegramProductCardSender, I
         catch
         {
             return $"{amount:0.##} {currency}";
+        }
+    }
+
+    private async Task<bool> TrySendRenderedCardAsync(
+        HttpClient client,
+        string botToken,
+        string chatId,
+        CimriProduct product,
+        Dictionary<Guid, string> merchantsById,
+        string caption,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var offers = product.Offers.OrderBy(o => o.Price).ToList();
+            if (offers.Count == 0) return false;
+
+            var lowest = offers[0].Price;
+            var currency = string.IsNullOrWhiteSpace(offers[0].Currency) ? "TRY" : offers[0].Currency.Trim();
+
+            decimal? avg = offers.Count >= 2 ? offers.Average(o => o.Price) : null;
+
+            decimal? bestPriceFrom = null;
+            if (product.PreviousPriceAmount is > 0 && product.PreviousPriceAmount > lowest)
+                bestPriceFrom = product.PreviousPriceAmount.Value;
+            else if (product.DiscountPercent is > 0 and < 100)
+            {
+                var computed = lowest / (1m - product.DiscountPercent.Value / 100m);
+                if (computed > lowest) bestPriceFrom = computed;
+            }
+            else if (offers.Count >= 2)
+            {
+                var maxP = offers.Max(o => o.Price);
+                if (maxP > lowest) bestPriceFrom = maxP;
+            }
+
+            merchantsById.TryGetValue(offers[0].MerchantId, out var merchantName);
+            merchantName ??= product.BestPriceMerchantName?.Trim()
+                          ?? offers[0].OfferTitle
+                          ?? offers[0].SellerName;
+
+            decimal? discountPct = null;
+            if (product.DiscountPercent is > 0 and < 100)
+                discountPct = Math.Round(product.DiscountPercent.Value);
+            else if (bestPriceFrom.HasValue && bestPriceFrom.Value > 0)
+                discountPct = Math.Round((bestPriceFrom.Value - lowest) / bestPriceFrom.Value * 100m);
+
+            // Temayı contentId hash'inden seç (her ürün tutarlı ama farklı renkte)
+            var themeIndex = Math.Abs(product.ContentId.GetHashCode()) % 4;
+
+            var cardBytes = await CimriCardImageGenerator.GenerateAsync(
+                product.Title?.Trim() ?? "",
+                product.PrimaryImageUrl?.Trim(),
+                lowest, avg, bestPriceFrom, currency,
+                merchantName?.Trim(),
+                discountPct,
+                themeIndex,
+                client,
+                cancellationToken);
+
+            var tgUrl = $"https://api.telegram.org/bot{botToken}/sendPhoto";
+            using var form = new MultipartFormDataContent();
+            form.Add(new StringContent(chatId), "chat_id");
+            form.Add(new StringContent(caption), "caption");
+            form.Add(new StringContent("HTML"), "parse_mode");
+
+            var imgContent = new ByteArrayContent(cardBytes);
+            imgContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+            form.Add(imgContent, "photo", $"card_{product.ContentId}.png");
+
+            using var response = await client.PostAsync(tgUrl, form, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogDebug("Telegram sendPhoto (card) HTTP {Status}: {Body}", response.StatusCode, body);
+                return false;
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Kart render/upload başarısız, fallback'e geçiliyor");
+            return false;
         }
     }
 
