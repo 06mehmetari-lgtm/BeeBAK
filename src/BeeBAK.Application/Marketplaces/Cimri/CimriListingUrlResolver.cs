@@ -6,8 +6,9 @@ namespace BeeBAK.Marketplaces.Cimri;
 public static class CimriListingUrlResolver
 {
     /// <summary>
-    /// Önce senkron girişindeki tam URL, sonra <see cref="CimriClientOptions.ListingPageUrl"/>,
-    /// son olarak yapılandırmadaki BaseUrl + DiscountedListingPath (ikisi de dolu olmalı).
+    /// Önce senkron/API girişindeki tam HTTPS URL, sonra yapılandırmadaki
+    /// <see cref="CimriClientOptions.ListingPageUrl"/>.
+    /// BaseUrl + path ile otomatik birleştirme yok — hangi liste sayfasının taranacağı açıkça verilmelidir.
     /// </summary>
     public static string Resolve(CimriClientOptions options, string? listingPageUrlOverride)
     {
@@ -21,7 +22,8 @@ public static class CimriListingUrlResolver
             return ValidateAndReturn(options.ListingPageUrl.Trim(), options, nameof(options.ListingPageUrl));
         }
 
-        return BuildFromBaseAndPath(options);
+        throw new BusinessException("BeeBAK:CimriListingUrlNotConfigured")
+            .WithData("Reason", "ListingPageUrl");
     }
 
     private static string ValidateAndReturn(string url, CimriClientOptions options, string fieldHint)
@@ -41,27 +43,5 @@ public static class CimriListingUrlResolver
         }
 
         return url;
-    }
-
-    private static string BuildFromBaseAndPath(CimriClientOptions options)
-    {
-        if (string.IsNullOrWhiteSpace(options.BaseUrl))
-        {
-            throw new BusinessException("BeeBAK:CimriListingUrlNotConfigured")
-                .WithData("Reason", "BaseUrl");
-        }
-
-        if (string.IsNullOrWhiteSpace(options.DiscountedListingPath))
-        {
-            throw new BusinessException("BeeBAK:CimriListingUrlNotConfigured")
-                .WithData("Reason", "DiscountedListingPath");
-        }
-
-        var baseUrl = options.BaseUrl.TrimEnd('/');
-        var path = options.DiscountedListingPath.Trim();
-        path = path.StartsWith('/') ? path : "/" + path;
-        var combined = baseUrl + path;
-
-        return ValidateAndReturn(combined, options, nameof(BuildFromBaseAndPath));
     }
 }

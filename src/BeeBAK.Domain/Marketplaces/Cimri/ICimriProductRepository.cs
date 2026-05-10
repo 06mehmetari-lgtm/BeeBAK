@@ -19,4 +19,10 @@ public interface ICimriProductRepository : IRepository<CimriProduct, Guid>
         string? search = null,
         bool includeOffers = false,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Paylaşım kartı için: indirim + görsel + en az bir tıklanabilir teklif.</summary>
+    Task<List<CimriProduct>> GetShareDeckCandidatesAsync(
+        int take,
+        IReadOnlyCollection<string> excludeContentIds,
+        CancellationToken cancellationToken = default);
 }

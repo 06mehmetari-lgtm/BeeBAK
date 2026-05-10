@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using BeeBAK.Ecommerce;
@@ -16,7 +17,7 @@ namespace BeeBAK.Marketplaces.Cimri.Jobs;
 
 /// <summary>
 /// Cimri liste URL'sini Selenium ile gezer, kart parser'ı ile ürün URL'lerini bulup
-/// her birini ayrı bir <see cref="CimriProductDetailJobArgs"/> olarak queue'ya iter.
+/// detay işlerini <see cref="CimriClientOptions.ProductDetailEnqueueBatchSize"/> ile gruplayarak kuyruğa iter.
 /// </summary>
 public class CimriListingDiscoveryJob : AsyncBackgroundJob<CimriListingDiscoveryJobArgs>
 {
@@ -57,6 +58,7 @@ public class CimriListingDiscoveryJob : AsyncBackgroundJob<CimriListingDiscovery
         var options = _options.CurrentValue;
         var maxPages = Math.Clamp(args.MaxPages <= 0 ? options.DefaultMaxPages : args.MaxPages, 1, 200);
         var maxProducts = Math.Clamp(args.MaxProducts <= 0 ? options.DefaultMaxProducts : args.MaxProducts, 1, 5000);
+        var detailBatchSize = Math.Clamp(options.ProductDetailEnqueueBatchSize, 1, 500);
 
         var listingUrl = ResolveListingPageUrl(args, options);
         var loadMoreClicks = Math.Max(0, maxPages - 1);
@@ -67,7 +69,7 @@ public class CimriListingDiscoveryJob : AsyncBackgroundJob<CimriListingDiscovery
 
         await _eventLogger.LogAsync(
             args.ScrapeRunId, EcScrapeRunEventLevel.Info, "discovery",
-            $"Listeleme sayfası açılıyor (Daha Fazla x{loadMoreClicks}, max {maxProducts} ürün)…",
+            $"Worker: Selenium şu tam listeleme adresine gidiyor → {listingUrl} — \"Daha Fazla\" tıklaması: {loadMoreClicks}, kart üst sınırı: {maxProducts}.",
             url: listingUrl);
 
         if (await IsCancelledAsync(args.ScrapeRunId))
@@ -120,11 +122,13 @@ public class CimriListingDiscoveryJob : AsyncBackgroundJob<CimriListingDiscovery
         var enqueued = 0;
         var skipped = 0;
         var index = 0;
+        var detailBatch = detailBatchSize > 1 ? new List<CimriProductDetailJobArgs>() : null;
         foreach (var card in cards)
         {
             index++;
             if (await IsCancelledAsync(args.ScrapeRunId))
             {
+                detailBatch?.Clear();
                 await _eventLogger.LogAsync(
                     args.ScrapeRunId, EcScrapeRunEventLevel.Warning, "discovery",
                     $"İptal edildi — kalan {cards.Count - index + 1} ürün kuyruğa atılmadı.");
@@ -147,7 +151,7 @@ public class CimriListingDiscoveryJob : AsyncBackgroundJob<CimriListingDiscovery
                 }
             }
 
-            await _backgroundJobManager.EnqueueAsync(new CimriProductDetailJobArgs
+            var detailArgs = new CimriProductDetailJobArgs
             {
                 ScrapeRunId = args.ScrapeRunId,
                 ContentId = card.ContentId,
@@ -164,7 +168,20 @@ public class CimriListingDiscoveryJob : AsyncBackgroundJob<CimriListingDiscovery
                 IncludeOffers = args.IncludeOffers,
                 ForceRefresh = args.ForceRefresh,
                 RetailOfferPolicy = args.RetailOfferPolicy,
-            });
+            };
+
+            if (detailBatchSize <= 1)
+            {
+                await _backgroundJobManager.EnqueueAsync(detailArgs);
+            }
+            else
+            {
+                detailBatch!.Add(detailArgs);
+                if (detailBatch.Count >= detailBatchSize)
+                {
+                    await EnqueueDetailBatchAsync(args, detailBatch);
+                }
+            }
 
             await _eventLogger.LogAsync(
                 args.ScrapeRunId, EcScrapeRunEventLevel.Info, "discovery",
@@ -172,6 +189,11 @@ public class CimriListingDiscoveryJob : AsyncBackgroundJob<CimriListingDiscovery
                 title: card.Title, url: card.ProductUrl, index: index, total: cards.Count);
 
             enqueued++;
+        }
+
+        if (detailBatch is { Count: > 0 })
+        {
+            await EnqueueDetailBatchAsync(args, detailBatch);
         }
 
         _ownLogger.LogInformation(
@@ -187,6 +209,24 @@ public class CimriListingDiscoveryJob : AsyncBackgroundJob<CimriListingDiscovery
             // Tümü dedup-skip ise hiç detail job çalışmaz; run'ı burada tamamla.
             await CompleteRunAsync(args.ScrapeRunId);
         }
+    }
+
+    private async Task EnqueueDetailBatchAsync(
+        CimriListingDiscoveryJobArgs discoveryArgs,
+        List<CimriProductDetailJobArgs> batch)
+    {
+        if (batch.Count == 0)
+        {
+            return;
+        }
+
+        await _backgroundJobManager.EnqueueAsync(new CimriProductDetailBatchJobArgs
+        {
+            ScrapeRunId = discoveryArgs.ScrapeRunId,
+            Items = batch.ToList()
+        });
+
+        batch.Clear();
     }
 
     private async Task<bool> IsCancelledAsync(Guid scrapeRunId)

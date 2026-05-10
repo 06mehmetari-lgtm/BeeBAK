@@ -45,4 +45,10 @@ public class CimriListingSyncStatusDto
 
     /// <summary>UI delta polling için: bu değerden büyük TimestampUtc'leri çekmesi yeterli.</summary>
     public DateTime? LatestEventUtc { get; set; }
+
+    /// <summary>Bu çalışmada Selenium ile açılan tam listeleme HTTPS adresi (ölçekleme isteğinden çözülmüş).</summary>
+    public string? ResolvedListingPageUrl { get; set; }
+
+    /// <summary><see cref="ResolvedListingPageUrl"/> nereden geldi: <c>form</c> veya <c>server</c>.</summary>
+    public string? ListingPageSource { get; set; }
 }

@@ -23,19 +23,22 @@ public class CimriProductIngestionService : DomainService
     private readonly CimriProductDetailScraper _detailScraper;
     private readonly IOptionsMonitor<CimriClientOptions> _options;
     private readonly ILogger<CimriProductIngestionService> _logger;
+    private readonly ICimriTelegramProductCardSender _telegramProductCardSender;
 
     public CimriProductIngestionService(
         ICimriProductRepository productRepository,
         ICimriMerchantRepository merchantRepository,
         CimriProductDetailScraper detailScraper,
         IOptionsMonitor<CimriClientOptions> options,
-        ILogger<CimriProductIngestionService> logger)
+        ILogger<CimriProductIngestionService> logger,
+        ICimriTelegramProductCardSender telegramProductCardSender)
     {
         _productRepository = productRepository;
         _merchantRepository = merchantRepository;
         _detailScraper = detailScraper;
         _options = options;
         _logger = logger;
+        _telegramProductCardSender = telegramProductCardSender;
     }
 
     public async Task<CimriIngestionResult> UpsertAsync(
@@ -169,6 +172,18 @@ public class CimriProductIngestionService : DomainService
         }
 
         await _productRepository.UpdateAsync(product, autoSave: true, cancellationToken: cancellationToken);
+
+        if (offersAdded > 0)
+        {
+            try
+            {
+                await _telegramProductCardSender.TrySendAfterProductIngestedAsync(card.ContentId, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Telegram kart paylaşımı başarısız: {ContentId}", card.ContentId);
+            }
+        }
 
         return new CimriIngestionResult(product.Id, offersAdded, touchedMerchants, MarkVisitedInDedupCache: true);
     }
