@@ -216,33 +216,62 @@ public class CimriTelegramProductCardSender : ICimriTelegramProductCardSender, I
             merchantLabel = name ?? offers[0].OfferTitle ?? offers[0].SellerName;
         }
 
+        // İndirim yüzdesi: API'den veya eski/yeni fiyattan hesapla
+        decimal? discountPct = null;
+        if (product.DiscountPercent is > 0 and < 100)
+        {
+            discountPct = Math.Round(product.DiscountPercent.Value);
+        }
+        else if (bestPriceFrom.HasValue && bestPriceFrom.Value > 0 && Math.Abs(bestPriceFrom.Value - lowest) >= 0.01m)
+        {
+            discountPct = Math.Round((bestPriceFrom.Value - lowest) / bestPriceFrom.Value * 100m);
+        }
+
         var sb = new StringBuilder();
-        sb.AppendLine("<b>Bee BAK Sana</b>");
+
+        // ── Başlık satırı (ekrandaki brand header'ı yansıtır) ──────────────────
+        sb.AppendLine("🐝 <b>Bee BAK Sana</b> — Fırsatlar");
+        sb.AppendLine();
+
+        // ── İndirim rozeti (ekrandaki slot__disc badge'i yansıtır) ───────────
+        if (discountPct.HasValue && discountPct.Value > 0)
+        {
+            sb.Append("🏷 <b>−").Append((int)discountPct.Value).AppendLine("% İndirim</b>");
+            sb.AppendLine();
+        }
+
+        // ── Ürün başlığı (ekrandaki slot__product-title'ı yansıtır) ──────────
         sb.Append("<b>").Append(EscapeHtml(product.Title.Trim())).AppendLine("</b>");
         sb.AppendLine();
 
+        // ── Fiyat chip'leri (ekrandaki slot__chip--avg ve slot__chip--min) ───
+        sb.AppendLine("━━━━━━━━━━━━━━━━━━━");
         if (avg.HasValue)
         {
-            sb.Append("Ortalama Fiyat: ").AppendLine(EscapeHtml(FormatMoney(avg.Value, currency)));
+            sb.Append("📊 <i>Ortalama Fiyat</i>  ");
+            sb.AppendLine(EscapeHtml(FormatMoney(avg.Value, currency)));
         }
 
-        sb.Append("En Uygun Fiyat: ").AppendLine(EscapeHtml(FormatMoney(lowest, currency)));
-
+        // En uygun fiyat + fiyat düşüşü oku (chip--min ile chip__chip-drop)
+        sb.Append("💚 <b>En Uygun: ").Append(EscapeHtml(FormatMoney(lowest, currency))).AppendLine("</b>");
         if (bestPriceFrom.HasValue && Math.Abs(bestPriceFrom.Value - lowest) >= 0.01m)
         {
-            sb.Append(EscapeHtml(FormatMoney(bestPriceFrom.Value, currency)));
-            sb.Append(" → ");
-            sb.AppendLine(EscapeHtml(FormatMoney(lowest, currency)));
+            sb.Append("   <s>").Append(EscapeHtml(FormatMoney(bestPriceFrom.Value, currency))).Append("</s>")
+              .Append(" ➜ <b>").Append(EscapeHtml(FormatMoney(lowest, currency))).AppendLine("</b>");
         }
 
+        sb.AppendLine("━━━━━━━━━━━━━━━━━━━");
+
+        // ── Mağaza (ekrandaki slot__merchant-line'ı yansıtır) ────────────────
         if (!string.IsNullOrWhiteSpace(merchantLabel))
         {
-            sb.AppendLine(EscapeHtml(merchantLabel.Trim()));
+            sb.Append("🏪 ").AppendLine(EscapeHtml(merchantLabel.Trim()));
+            sb.AppendLine();
         }
 
+        // ── CTA linki (ekrandaki share-card__best-link'i yansıtır) ──────────
         var url = PickBestMerchantUrl(product);
-        sb.AppendLine();
-        sb.Append("<a href=\"").Append(EscapeAttr(url)).Append("\">En uygun teklife git →</a>");
+        sb.Append("👉 <a href=\"").Append(EscapeAttr(url)).Append("\">En uygun teklife git →</a>");
 
         return sb.ToString();
     }

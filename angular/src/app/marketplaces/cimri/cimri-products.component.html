@@ -1,5 +1,19 @@
 <section class="cimri-shell">
+  <!-- Tamamlanma banner'ı -->
+  <div class="completion-banner" *ngIf="completionBanner() as cb" role="status" aria-live="polite">
+    <span class="completion-banner__icon">✓</span>
+    <span class="completion-banner__text">
+      Senkronizasyon tamamlandı —
+      <strong>{{ cb.productsAffected }}</strong> ürün işlendi
+    </span>
+    <button class="completion-banner__close" (click)="dismissCompletionBanner()" aria-label="Kapat">×</button>
+  </div>
+
   <header class="cimri-shell__header">
+    <div class="cimri-shell__header-badge">
+      <span class="cimri-shell__header-dot" [class.active]="isSyncing() || syncStatus()?.isActive"></span>
+      Cimri
+    </div>
     <h1>{{ '::CimriProductsTitle' | abpLocalization }}</h1>
     <p class="muted">{{ '::CimriPullIntro' | abpLocalization }}</p>
   </header>
@@ -95,7 +109,12 @@
       </button>
     </div>
 
-    <div class="sync-progress" *ngIf="syncStatus() as st">
+    <div
+      class="sync-progress"
+      *ngIf="syncStatus() as st"
+      [class.sync-progress--completed]="statusVariant() === 'completed'"
+      [class.sync-progress--failed]="statusVariant() === 'failed'"
+    >
       <div class="sync-progress__header">
         <span class="sync-progress__badge" [class]="'state-' + statusVariant()">
           <span class="dot"></span>
@@ -491,7 +510,10 @@
   </div>
 
   <ng-template #loadingTpl>
-    <div class="loading">…</div>
+    <div class="loading-premium">
+      <div class="loading-premium__spinner"></div>
+      <span>Ürünler yükleniyor…</span>
+    </div>
   </ng-template>
 
   <footer class="cimri-shell__pager" *ngIf="totalCount() > 0">
