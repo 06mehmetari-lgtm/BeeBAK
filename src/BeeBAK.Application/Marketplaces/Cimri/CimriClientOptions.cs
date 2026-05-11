@@ -136,6 +136,29 @@ public class CimriClientOptions
     public int OfferUrlCacheTtlSeconds { get; set; } = 7 * 24 * 60 * 60;
 
     public CimriTelegramNotificationOptions Telegram { get; set; } = new();
+
+    public CimriAutoSyncOptions AutoSync { get; set; } = new();
+}
+
+public class CimriAutoSyncOptions
+{
+    /// <summary>Worker 3 saatte bir otomatik tarama yapar.</summary>
+    public bool Enabled { get; set; } = false;
+
+    /// <summary>Tarama tekrarı saat cinsinden (varsayılan 3).</summary>
+    public int IntervalHours { get; set; } = 3;
+
+    /// <summary>Worker başladığında ilk taramayı beklemeden hemen başlat.</summary>
+    public bool RunOnStart { get; set; } = false;
+
+    /// <summary>Taranacak tam URL (boşsa CimriClientOptions.ListingPageUrl kullanılır).</summary>
+    public string? ListingPageUrl { get; set; }
+
+    /// <summary>Tarama başına maksimum sayfa sayısı.</summary>
+    public int MaxPages { get; set; } = 15;
+
+    /// <summary>Tarama başına maksimum ürün sayısı (sayfada 200–1000 arası değişebilir).</summary>
+    public int MaxProducts { get; set; } = 1000;
 }
 
 public class CimriTelegramNotificationOptions
