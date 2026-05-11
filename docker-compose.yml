@@ -161,7 +161,7 @@ services:
       Cimri__Telegram__ChatId: "-1003910000677"
       Cimri__Telegram__ShareProductCardsOnIngest: "true"
       Cimri__Telegram__MinDiscountPercentForTelegram: "0"
-      Cimri__Telegram__TelegramCardDedupHours: "0"
+      Cimri__Telegram__TelegramCardDedupHours: "24"
     ports:
       - "44381:8080"
     volumes:
@@ -237,7 +237,14 @@ services:
       Cimri__Telegram__ChatId: "-1003910000677"
       Cimri__Telegram__ShareProductCardsOnIngest: "true"
       Cimri__Telegram__MinDiscountPercentForTelegram: "0"
-      Cimri__Telegram__TelegramCardDedupHours: "0"
+      Cimri__Telegram__TelegramCardDedupHours: "24"
+      # Otomatik periyodik tarama — her 3 saatte bir indirimli ürünler sayfasını tarar
+      Cimri__AutoSync__Enabled: "true"
+      Cimri__AutoSync__IntervalHours: "3"
+      Cimri__AutoSync__RunOnStart: "true"
+      Cimri__AutoSync__ListingPageUrl: "https://www.cimri.com/indirimli-urunler"
+      Cimri__AutoSync__MaxPages: "15"
+      Cimri__AutoSync__MaxProducts: "1000"
     deploy:
       replicas: 2
       resources:
