@@ -49,8 +49,7 @@ public class CimriTelegramPublishQueue : ITransientDependency
     }
 
     // ── En yüksek skorlu ürünü al ve kuyruktan çıkar ──────────────────────
-    /// <param name="avoidMerchant">Bu mağaza adından farklı bir ürün tercih edilir.
-    /// Kuyrukta sadece bu mağazadan ürün varsa yine de o alınır (zorunlu fallback).</param>
+    /// <param name="avoidMerchant">Bu mağaza adından farklı bir ürün tercih edilir.</param>
     public async Task<CimriPublishQueueEntry?> DequeueTopAsync(
         string? avoidMerchant = null, CancellationToken ct = default)
     {
@@ -63,19 +62,18 @@ public class CimriTelegramPublishQueue : ITransientDependency
 
             var sorted = list.OrderByDescending(e => e.Score).ToList();
 
-            if (!string.IsNullOrEmpty(avoidMerchant) && sorted.Count > 1)
-            {
-                // Farklı mağazadan en yüksek skorlu ürünü tercih et
-                top = sorted.FirstOrDefault(e =>
-                    !string.Equals(e.MerchantName, avoidMerchant,
-                        StringComparison.OrdinalIgnoreCase))
-                    ?? sorted[0]; // Tüm kuyruk aynı mağazaysa en üstü al
-            }
-            else
-            {
-                top = sorted[0];
-            }
+            // Top 10'dan rastgele seç — sürekli aynı ürünü engeller
+            var pool = sorted.Take(Math.Min(10, sorted.Count)).ToList();
 
+            // Son mağazayı hariç tut (mümkünse)
+            var candidates = !string.IsNullOrEmpty(avoidMerchant)
+                ? pool.Where(e => !string.Equals(e.MerchantName, avoidMerchant,
+                    StringComparison.OrdinalIgnoreCase)).ToList()
+                : pool;
+
+            if (candidates.Count == 0) candidates = pool; // tüm kuyruk aynı mağazaysa fallback
+
+            top = candidates[Random.Shared.Next(candidates.Count)];
             list.Remove(top);
             await WriteAsync(list, ct);
         }, ct);

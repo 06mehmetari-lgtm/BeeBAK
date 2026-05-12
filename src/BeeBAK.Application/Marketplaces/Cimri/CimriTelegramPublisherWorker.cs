@@ -29,6 +29,7 @@ public class CimriTelegramPublisherWorker : AsyncPeriodicBackgroundWorkerBase
     private const string LastSendKey       = "beebak:tg:last-send-unix";
     private const string LastMerchantKey   = "beebak:tg:last-merchant";
     private const string FingerprintPrefix = "beebak:tg:fp:";
+    private const string SentCooldownPrefix = "beebak:tg:cd:";
 
     private static readonly Random Rng = new();
 
@@ -112,7 +113,15 @@ public class CimriTelegramPublisherWorker : AsyncPeriodicBackgroundWorkerBase
             return;
         }
 
-        // ── 4. Fingerprint kontrolü (aynı fiyat/indirim → tekrar gönderme) ──
+        // ── 4a. 24 saat ürün cooldown (aynı ürün 24 saat içinde tekrar gönderilmez) ──
+        var cooldownKey = SentCooldownPrefix + entry.ContentId;
+        if (!string.IsNullOrEmpty(await cache.GetStringAsync(cooldownKey)))
+        {
+            logger.LogDebug("Cimri publisher: 24h cooldown, atlanıyor ({ContentId})", entry.ContentId);
+            return;
+        }
+
+        // ── 4b. Fingerprint kontrolü (aynı fiyat/indirim → tekrar gönderme) ──
         var currentFp  = CimriProductScorer.BuildFingerprint(entry.LowestPrice, entry.DiscountPercent);
         var storedFp   = await cache.GetStringAsync(FingerprintPrefix + entry.ContentId);
         if (!string.IsNullOrEmpty(storedFp) && storedFp == currentFp)
@@ -155,6 +164,10 @@ public class CimriTelegramPublisherWorker : AsyncPeriodicBackgroundWorkerBase
                 {
                     AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(24),
                 });
+
+            // 24 saat ürün cooldown'ını kaydet (aynı ürün 24 saat tekrar gönderilmez)
+            await cache.SetStringAsync(cooldownKey, "1",
+                new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(24) });
 
             // Son gönderilen mağazayı kaydet (bir sonraki gönderimde farklı mağaza seçilsin)
             if (!string.IsNullOrEmpty(entry.MerchantName))

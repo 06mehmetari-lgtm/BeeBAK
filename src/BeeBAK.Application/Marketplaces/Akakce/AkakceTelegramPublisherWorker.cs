@@ -17,9 +17,10 @@ namespace BeeBAK.Marketplaces.Akakce;
 
 public class AkakceTelegramPublisherWorker : AsyncPeriodicBackgroundWorkerBase
 {
-    private const string LastSendKey       = "beebak:tg:akakce:last-send-unix";
-    private const string LastMerchantKey   = "beebak:tg:akakce:last-merchant";
-    private const string FingerprintPrefix = "beebak:tg:akakce:fp:";
+    private const string LastSendKey        = "beebak:tg:akakce:last-send-unix";
+    private const string LastMerchantKey    = "beebak:tg:akakce:last-merchant";
+    private const string FingerprintPrefix  = "beebak:tg:akakce:fp:";
+    private const string SentCooldownPrefix = "beebak:tg:akakce:cd:";
 
     private static readonly Random Rng = new();
 
@@ -87,6 +88,14 @@ public class AkakceTelegramPublisherWorker : AsyncPeriodicBackgroundWorkerBase
             return;
         }
 
+        // 24 saat ürün cooldown (aynı ürün 24 saat içinde tekrar gönderilmez)
+        var cooldownKey = SentCooldownPrefix + entry.ProductCode;
+        if (!string.IsNullOrEmpty(await cache.GetStringAsync(cooldownKey)))
+        {
+            logger.LogDebug("Akakce publisher: 24h cooldown, atlanıyor ({ProductCode})", entry.ProductCode);
+            return;
+        }
+
         // Fingerprint kontrolü
         var fp       = $"{(int)entry.LowestPrice}_{(int)(entry.DiscountPercent ?? 0m)}";
         var storedFp = await cache.GetStringAsync(FingerprintPrefix + entry.ProductCode);
@@ -109,6 +118,10 @@ public class AkakceTelegramPublisherWorker : AsyncPeriodicBackgroundWorkerBase
 
             await cache.SetStringAsync(LastSendKey,
                 DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(),
+                new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(24) });
+
+            // 24 saat ürün cooldown'ını kaydet
+            await cache.SetStringAsync(cooldownKey, "1",
                 new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(24) });
 
             // Son gönderilen mağazayı kaydet (bir sonraki gönderimde farklı mağaza seçilsin)
