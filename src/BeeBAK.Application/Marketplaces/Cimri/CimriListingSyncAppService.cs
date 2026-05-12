@@ -227,6 +227,19 @@ public class CimriListingSyncAppService : ApplicationService, ICimriListingSyncA
         return MapToStatus(run, events, listingMeta.url, listingMeta.source);
     }
 
+    public virtual async Task<CimriListingSyncStatusDto?> GetLatestAsync()
+    {
+        var queryable = await _scrapeRunRepository.GetQueryableAsync();
+        var run = queryable
+            .Where(r => r.Marketplace == MarketplaceKind.Cimri)
+            .OrderByDescending(r => r.StartedUtc)
+            .FirstOrDefault();
+        if (run == null) return null;
+        var events = await LoadEventsAsync(run.Id, null);
+        var listingMeta = await GetListingTargetMetaAsync(run.Id);
+        return MapToStatus(run, events, listingMeta.url, listingMeta.source);
+    }
+
     [Authorize(BeeBAKPermissions.Cimri.Sync)]
     public virtual async Task<CimriListingSyncStatusDto> CancelAsync(Guid scrapeRunId)
     {

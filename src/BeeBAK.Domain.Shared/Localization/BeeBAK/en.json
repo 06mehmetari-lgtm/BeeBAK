@@ -46,6 +46,7 @@
     "SharesNoPermission": "You don't have access to share cards.",
     "Menu:MarketplacesCimri": "Cimri discounted",
     "Menu:MarketplacesAkakce": "Akakce price drops",
+    "Menu:MarketplacesMonitor": "Live Monitor",
     "CimriProductsTitle": "Cimri — discounted products",
     "CimriPullIntro": "Enter any Cimri listing URL below (discounted feed or a category page). Selenium opens it and loads more if available; cards with a parsed discount percentage are processed highest-first. Offer expansion uses '+X Fiyat Teklifini Gör'. The product grid also sorts by highest discount first.",
     "CimriSyncNow": "Pull & save to database",

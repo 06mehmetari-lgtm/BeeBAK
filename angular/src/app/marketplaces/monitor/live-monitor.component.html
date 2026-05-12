@@ -1,0 +1,210 @@
+<div class="monitor">
+
+  <!-- Header -->
+  <header class="monitor__header">
+    <div class="monitor__title-row">
+      <h1 class="monitor__title">Canlı Sistem İzleme</h1>
+      <div class="monitor__meta">
+        <span class="monitor__refresh-badge" [class.refreshing]="isRefreshing()">
+          <span class="dot"></span>
+          <span *ngIf="isRefreshing()">Yenileniyor…</span>
+          <span *ngIf="!isRefreshing() && lastRefresh()">Son güncelleme: {{ formatTs(lastRefresh()) }}</span>
+          <span *ngIf="!isRefreshing() && !lastRefresh()">Bekleniyor…</span>
+        </span>
+        <span class="monitor__live-indicator" [class.active]="anyActive()">
+          <span class="pulse-ring" *ngIf="anyActive()"></span>
+          {{ anyActive() ? 'CANLI' : 'BEKLİYOR' }}
+        </span>
+      </div>
+    </div>
+    <p *ngIf="error()" class="monitor__error">{{ error() }}</p>
+  </header>
+
+  <!-- Two-column grid -->
+  <div class="monitor__grid">
+
+    <!-- ─── CIMRI PANEL ─── -->
+    <section class="panel" [class]="'panel--' + statusClass(cimri())">
+      <div class="panel__head">
+        <div class="panel__brand">
+          <span class="panel__logo cimri-logo">C</span>
+          <span class="panel__name">Cimri</span>
+        </div>
+        <span class="panel__status-badge" [class]="'badge--' + statusClass(cimri())">
+          {{ statusLabel(cimri()?.status) }}
+        </span>
+      </div>
+
+      <ng-container *ngIf="cimri(); else noData">
+        <!-- Progress -->
+        <div class="panel__progress-wrap" *ngIf="cimriActive() || cimri()?.totalItems">
+          <div class="panel__progress-row">
+            <span class="panel__progress-label">
+              {{ cimri()?.processedItems ?? 0 }} / {{ cimri()?.totalItems ?? '?' }} ürün
+            </span>
+            <span class="panel__progress-pct">{{ cimriProgress() }}%</span>
+          </div>
+          <div class="panel__progress-track">
+            <div class="panel__progress-fill" [style.width.%]="cimriProgress()"
+                 [class.fill--running]="cimriActive()"
+                 [class.fill--done]="cimri()?.status === statusEnum.Completed"
+                 [class.fill--error]="cimri()?.status === statusEnum.Failed"></div>
+          </div>
+        </div>
+
+        <!-- Stats row -->
+        <div class="panel__stats">
+          <div class="stat">
+            <span class="stat__val">{{ cimri()?.processedItems ?? 0 }}</span>
+            <span class="stat__lbl">İşlendi</span>
+          </div>
+          <div class="stat">
+            <span class="stat__val">{{ cimri()?.failedItems ?? 0 }}</span>
+            <span class="stat__lbl">Hata</span>
+          </div>
+          <div class="stat" *ngIf="cimriActive() && cimri()?.estimatedRemainingSeconds != null">
+            <span class="stat__val">{{ formatDuration(cimri()!.estimatedRemainingSeconds!) }}</span>
+            <span class="stat__lbl">Kalan</span>
+          </div>
+          <div class="stat" *ngIf="cimri()?.elapsedSeconds">
+            <span class="stat__val">{{ formatDuration(cimri()!.elapsedSeconds) }}</span>
+            <span class="stat__lbl">Süre</span>
+          </div>
+        </div>
+
+        <!-- Listing URL -->
+        <div class="panel__listing" *ngIf="cimri()?.resolvedListingPageUrl">
+          <span class="panel__listing-label">Liste URL</span>
+          <a [href]="cimri()!.resolvedListingPageUrl!" target="_blank" rel="noopener" class="panel__listing-url">
+            {{ cimri()!.resolvedListingPageUrl }}
+          </a>
+          <span class="panel__listing-src" *ngIf="cimri()?.listingPageSource">
+            ({{ cimri()!.listingPageSource === 'form' ? 'formdan' : 'sunucudan' }})
+          </span>
+        </div>
+
+        <!-- Events feed -->
+        <div class="panel__events" *ngIf="cimriEvents().length > 0">
+          <div class="panel__events-title">Son Olaylar</div>
+          <ul class="event-list">
+            <li *ngFor="let ev of cimriEvents()" class="event-item" [class]="eventClass(ev.level)">
+              <span class="event-icon">{{ eventIcon(ev.level) }}</span>
+              <span class="event-time">{{ formatTime(ev.timestampUtc) }}</span>
+              <span class="event-phase" *ngIf="ev.phase">{{ ev.phase }}</span>
+              <span class="event-msg">{{ ev.message }}</span>
+              <span class="event-progress" *ngIf="ev.index && ev.total">
+                {{ ev.index }}/{{ ev.total }}
+              </span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="panel__empty-events" *ngIf="cimriEvents().length === 0 && cimriActive()">
+          Olaylar bekleniyor…
+        </div>
+      </ng-container>
+
+      <ng-template #noData>
+        <div class="panel__no-data">
+          <span>Henüz çalışma yok</span>
+        </div>
+      </ng-template>
+    </section>
+
+    <!-- ─── AKAKÇE PANEL ─── -->
+    <section class="panel" [class]="'panel--' + statusClass(akakce())">
+      <div class="panel__head">
+        <div class="panel__brand">
+          <span class="panel__logo akakce-logo">A</span>
+          <span class="panel__name">Akakçe</span>
+        </div>
+        <span class="panel__status-badge" [class]="'badge--' + statusClass(akakce())">
+          {{ statusLabel(akakce()?.status) }}
+        </span>
+      </div>
+
+      <ng-container *ngIf="akakce(); else noDataA">
+        <!-- Progress -->
+        <div class="panel__progress-wrap" *ngIf="akakceActive() || akakce()?.totalItems">
+          <div class="panel__progress-row">
+            <span class="panel__progress-label">
+              {{ akakce()?.processedItems ?? 0 }} / {{ akakce()?.totalItems ?? '?' }} ürün
+            </span>
+            <span class="panel__progress-pct">{{ akakceProgress() }}%</span>
+          </div>
+          <div class="panel__progress-track">
+            <div class="panel__progress-fill" [style.width.%]="akakceProgress()"
+                 [class.fill--running]="akakceActive()"
+                 [class.fill--done]="akakce()?.status === statusEnum.Completed"
+                 [class.fill--error]="akakce()?.status === statusEnum.Failed"></div>
+          </div>
+        </div>
+
+        <!-- Stats row -->
+        <div class="panel__stats">
+          <div class="stat">
+            <span class="stat__val">{{ akakce()?.processedItems ?? 0 }}</span>
+            <span class="stat__lbl">İşlendi</span>
+          </div>
+          <div class="stat">
+            <span class="stat__val">{{ akakce()?.failedItems ?? 0 }}</span>
+            <span class="stat__lbl">Hata</span>
+          </div>
+          <div class="stat" *ngIf="akakceActive() && akakce()?.estimatedRemainingSeconds != null">
+            <span class="stat__val">{{ formatDuration(akakce()!.estimatedRemainingSeconds!) }}</span>
+            <span class="stat__lbl">Kalan</span>
+          </div>
+          <div class="stat" *ngIf="akakce()?.elapsedSeconds">
+            <span class="stat__val">{{ formatDuration(akakce()!.elapsedSeconds) }}</span>
+            <span class="stat__lbl">Süre</span>
+          </div>
+        </div>
+
+        <!-- Listing URL -->
+        <div class="panel__listing" *ngIf="akakce()?.resolvedListingPageUrl">
+          <span class="panel__listing-label">Liste URL</span>
+          <a [href]="akakce()!.resolvedListingPageUrl!" target="_blank" rel="noopener" class="panel__listing-url">
+            {{ akakce()!.resolvedListingPageUrl }}
+          </a>
+          <span class="panel__listing-src" *ngIf="akakce()?.listingPageSource">
+            ({{ akakce()!.listingPageSource === 'form' ? 'formdan' : 'sunucudan' }})
+          </span>
+        </div>
+
+        <!-- Events feed -->
+        <div class="panel__events" *ngIf="akakceEvents().length > 0">
+          <div class="panel__events-title">Son Olaylar</div>
+          <ul class="event-list">
+            <li *ngFor="let ev of akakceEvents()" class="event-item" [class]="eventClass(ev.level)">
+              <span class="event-icon">{{ eventIcon(ev.level) }}</span>
+              <span class="event-time">{{ formatTime(ev.timestampUtc) }}</span>
+              <span class="event-phase" *ngIf="ev.phase">{{ ev.phase }}</span>
+              <span class="event-msg">{{ ev.message }}</span>
+              <span class="event-progress" *ngIf="ev.index && ev.total">
+                {{ ev.index }}/{{ ev.total }}
+              </span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="panel__empty-events" *ngIf="akakceEvents().length === 0 && akakceActive()">
+          Olaylar bekleniyor…
+        </div>
+      </ng-container>
+
+      <ng-template #noDataA>
+        <div class="panel__no-data">
+          <span>Henüz çalışma yok</span>
+        </div>
+      </ng-template>
+    </section>
+
+  </div><!-- /.monitor__grid -->
+
+  <!-- Quick nav -->
+  <div class="monitor__nav">
+    <a routerLink="/marketplaces/cimri" class="monitor__nav-link">Cimri Ürünleri →</a>
+    <a routerLink="/marketplaces/akakce" class="monitor__nav-link">Akakçe Ürünleri →</a>
+  </div>
+
+</div>

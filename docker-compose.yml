@@ -50,7 +50,7 @@ services:
     container_name: beebak-selenium-hub
     restart: unless-stopped
     environment:
-      SE_NODE_MAX_SESSIONS: "1"
+      SE_NODE_MAX_SESSIONS: "2"
       GRID_NEW_SESSION_WAIT_TIMEOUT: "60000"
       GRID_BROWSER_TIMEOUT: "120"
       GRID_TIMEOUT: "300"
@@ -58,6 +58,11 @@ services:
       - "4442:4442"
       - "4443:4443"
       - "4444:4444"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:4444/wd/hub/status || exit 1"]
       interval: 10s
@@ -68,7 +73,7 @@ services:
   chrome-node:
     image: selenium/node-chrome:4.27.0
     restart: unless-stopped
-    shm_size: 1gb
+    shm_size: 512m
     depends_on:
       selenium-hub:
         condition: service_healthy
@@ -76,16 +81,17 @@ services:
       SE_EVENT_BUS_HOST: selenium-hub
       SE_EVENT_BUS_PUBLISH_PORT: "4442"
       SE_EVENT_BUS_SUBSCRIBE_PORT: "4443"
-      SE_NODE_MAX_SESSIONS: "3"
+      SE_NODE_MAX_SESSIONS: "1"
       SE_NODE_OVERRIDE_MAX_SESSIONS: "true"
       SE_NODE_SESSION_TIMEOUT: "180"
       SE_VNC_NO_PASSWORD: "1"
       SE_OPTS: "--detect-drivers true"
     deploy:
-      replicas: 4
+      replicas: 2
       resources:
         limits:
-          memory: 1200M
+          cpus: "1.5"
+          memory: 900M
 
   dbmigrator:
     build:
@@ -160,7 +166,7 @@ services:
       Cimri__Telegram__BotToken: "7826351835:AAHMrtWAX443TCB3__N66yl1j-yPFRs8Q38"
       Cimri__Telegram__ChatId: "-1003910000677"
       Cimri__Telegram__ShareProductCardsOnIngest: "true"
-      Cimri__Telegram__MinDiscountPercentForTelegram: "0"
+      Cimri__Telegram__MinDiscountPercentForTelegram: "5"
       Cimri__Telegram__TelegramCardDedupHours: "24"
     ports:
       - "44381:8080"
@@ -175,7 +181,18 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    restart: unless-stopped
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f BeeBAK.WorkerHost || exit 1"]
+      interval: 2m
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 800M
     depends_on:
       postgres:
         condition: service_healthy
@@ -211,10 +228,12 @@ services:
       Cimri__DetailWaitTimeoutMs: "8000"
       Cimri__ExpandOffersClickPauseMs: "500"
       Cimri__LoadMoreClickPauseMs: "700"
-      Cimri__DelayBetweenProductsMs: "0"
+      Cimri__DelayBetweenProductsMs: "400"
       Cimri__OfferResolveTimeoutMs: "4000"
       Cimri__MaxOfferUrlsToResolveViaSelenium: "10"
       Cimri__OfferUrlCacheTtlSeconds: "604800"
+      Cimri__RequireMerchantProductId: "false"
+      Cimri__SkipProductWithoutQualifiedOffers: "false"
       Akakce__BaseUrl: "https://www.akakce.com"
       Akakce__AllowedAkakceHostSuffix: "akakce.com"
       Akakce__ListingPageUrl: "https://www.akakce.com/fiyati-dusen-urunler/?s=5"
@@ -231,25 +250,70 @@ services:
       Akakce__ScrollPauseMs: "200"
       Akakce__ListingWaitTimeoutMs: "15000"
       Akakce__DetailWaitTimeoutMs: "12000"
-      Akakce__DelayBetweenProductsMs: "0"
-      RabbitMq__BackgroundJobs__PrefetchCount: "2"
+      Akakce__DelayBetweenProductsMs: "400"
+      RabbitMq__BackgroundJobs__PrefetchCount: "1"
       Cimri__Telegram__BotToken: "7826351835:AAHMrtWAX443TCB3__N66yl1j-yPFRs8Q38"
       Cimri__Telegram__ChatId: "-1003910000677"
       Cimri__Telegram__ShareProductCardsOnIngest: "true"
-      Cimri__Telegram__MinDiscountPercentForTelegram: "0"
-      Cimri__Telegram__TelegramCardDedupHours: "24"
-      # Otomatik periyodik tarama — her 3 saatte bir indirimli ürünler sayfasını tarar
+      Cimri__Telegram__MinDiscountPercentForTelegram: "5"
+      Cimri__Telegram__TelegramCardDedupHours: "0"
+      # Akıllı yayın motoru
+      Cimri__Publish__MinDelayMinutes: "3"
+      Cimri__Publish__MaxDelayMinutes: "7"
+      Cimri__Publish__MinDiscountPercent: "10"
+      Cimri__Publish__QuietStartHour: "3"
+      Cimri__Publish__QuietEndHour: "6"
+      # ── Robot 1: Cimri otomatik periyodik tarama (kategori rotasyonlu) ──────
       Cimri__AutoSync__Enabled: "true"
-      Cimri__AutoSync__IntervalHours: "3"
+      Cimri__AutoSync__IntervalHours: "1"
+      Cimri__AutoSync__CategoryIntervalMinutes: "30"
       Cimri__AutoSync__RunOnStart: "true"
       Cimri__AutoSync__ListingPageUrl: "https://www.cimri.com/indirimli-urunler"
       Cimri__AutoSync__MaxPages: "15"
       Cimri__AutoSync__MaxProducts: "1000"
-    deploy:
-      replicas: 2
-      resources:
-        limits:
-          memory: 800M
+      # Kategori rotasyonu — her 30 dk'da bir sıradaki kategori taranır
+      Cimri__AutoSync__CategoryUrls__0: "https://www.cimri.com/indirimli-urunler"
+      Cimri__AutoSync__CategoryUrls__1: "https://www.cimri.com/telefon-aksesuarlari"
+      Cimri__AutoSync__CategoryUrls__2: "https://www.cimri.com/bilgisayar-ve-tablet"
+      Cimri__AutoSync__CategoryUrls__3: "https://www.cimri.com/elektronik"
+      Cimri__AutoSync__CategoryUrls__4: "https://www.cimri.com/ev-yasam"
+      Cimri__AutoSync__CategoryUrls__5: "https://www.cimri.com/spor-outdoor"
+      # ── Robot 2: Cimri fiyat izleme ─────────────────────────────────────────
+      Cimri__PriceWatch__Enabled: "true"
+      Cimri__PriceWatch__IntervalMinutes: "120"
+      Cimri__PriceWatch__RunOnStart: "false"
+      Cimri__PriceWatch__ProductAgeDays: "2"
+      Cimri__PriceWatch__ResyncAfterMinutes: "90"
+      Cimri__PriceWatch__MaxProductsPerRun: "200"
+      # ── Robot 1: Akakçe otomatik periyodik tarama (kategori rotasyonlu) ──────
+      Akakce__AutoSync__Enabled: "true"
+      Akakce__AutoSync__IntervalHours: "1"
+      Akakce__AutoSync__CategoryIntervalMinutes: "30"
+      Akakce__AutoSync__RunOnStart: "true"
+      Akakce__AutoSync__ListingPageUrl: "https://www.akakce.com/fiyati-dusen-urunler/?s=5"
+      Akakce__AutoSync__MaxPages: "10"
+      Akakce__AutoSync__MaxProducts: "500"
+      # Kategori rotasyonu
+      Akakce__AutoSync__CategoryUrls__0: "https://www.akakce.com/fiyati-dusen-urunler/?s=5"
+      Akakce__AutoSync__CategoryUrls__1: "https://www.akakce.com/telefon/"
+      Akakce__AutoSync__CategoryUrls__2: "https://www.akakce.com/bilgisayar/"
+      Akakce__AutoSync__CategoryUrls__3: "https://www.akakce.com/elektronik/"
+      Akakce__AutoSync__CategoryUrls__4: "https://www.akakce.com/ev-yasam/"
+      # ── Robot 2: Akakçe fiyat izleme ─────────────────────────────────────────
+      Akakce__PriceWatch__Enabled: "true"
+      Akakce__PriceWatch__IntervalMinutes: "120"
+      Akakce__PriceWatch__RunOnStart: "false"
+      Akakce__PriceWatch__ProductAgeDays: "2"
+      Akakce__PriceWatch__ResyncAfterMinutes: "90"
+      Akakce__PriceWatch__MaxProductsPerRun: "200"
+      # RabbitMQ bağlantı sağlamlığı
+      RabbitMq__Connections__Default__RequestedHeartbeat: "60"
+      # Akakçe yayın motoru
+      Akakce__Publish__MinDelayMinutes: "3"
+      Akakce__Publish__MaxDelayMinutes: "7"
+      Akakce__Publish__MinDiscountPercent: "10"
+      Akakce__Publish__QuietStartHour: "3"
+      Akakce__Publish__QuietEndHour: "6"
 
 volumes:
   beebak_pg:

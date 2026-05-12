@@ -47,6 +47,12 @@ export class CimriSyncService {
     );
   }
 
+  getLatest(): Observable<CimriListingSyncStatusDto | null> {
+    return this.http.get<CimriListingSyncStatusDto | null>(
+      `${this.root}/api/app/cimri-listing-sync/latest`,
+    );
+  }
+
   /** Cimri ürünleri ve ilişkili kayıtları siler (yeniden çekim için sıfır başlangıç). */
   clearAllStoredData(): Observable<void> {
     return this.http.post<void>(

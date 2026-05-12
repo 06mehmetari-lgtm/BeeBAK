@@ -32,4 +32,39 @@ public class AkakceClientOptions
     public bool UseQueue { get; set; } = true;
     public int ProductDetailEnqueueBatchSize { get; set; } = 20;
     public List<string>? ChromiumExtraArgs { get; set; }
+
+    public AkakceAutoSyncOptions AutoSync { get; set; } = new();
+    public AkakcePriceWatchOptions PriceWatch { get; set; } = new();
+    public AkakcePublishOptions Publish { get; set; } = new();
+}
+
+public class AkakceAutoSyncOptions
+{
+    public bool Enabled { get; set; } = false;
+    public int IntervalHours { get; set; } = 2;
+    public int CategoryIntervalMinutes { get; set; } = 30;
+    public bool RunOnStart { get; set; } = false;
+    public string? ListingPageUrl { get; set; }
+    public List<string> CategoryUrls { get; set; } = new();
+    public int MaxPages { get; set; } = 10;
+    public int MaxProducts { get; set; } = 500;
+}
+
+public class AkakcePriceWatchOptions
+{
+    public bool Enabled { get; set; } = true;
+    public int IntervalMinutes { get; set; } = 120;
+    public bool RunOnStart { get; set; } = false;
+    public int ProductAgeDays { get; set; } = 2;
+    public int ResyncAfterMinutes { get; set; } = 90;
+    public int MaxProductsPerRun { get; set; } = 200;
+}
+
+public class AkakcePublishOptions
+{
+    public int MinDelayMinutes { get; set; } = 6;
+    public int MaxDelayMinutes { get; set; } = 14;
+    public decimal MinDiscountPercent { get; set; } = 10m;
+    public int QuietStartHour { get; set; } = 2;
+    public int QuietEndHour { get; set; } = 8;
 }

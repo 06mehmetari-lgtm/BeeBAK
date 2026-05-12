@@ -50,41 +50,50 @@ public class AkakceProductDetailJob : AsyncBackgroundJob<AkakceProductDetailJobA
     {
         if (string.IsNullOrWhiteSpace(args.ProductCode) || string.IsNullOrWhiteSpace(args.ProductUrl))
         {
-            _logger.LogWarning("Invalid Akakce job args");
+            _logger.LogWarning("Geçersiz Akakce job args (productCode/url boş)");
             return;
         }
 
         if (await IsCancelledAsync(args.ScrapeRunId))
         {
-            await _eventLogger.LogAsync(args.ScrapeRunId, EcScrapeRunEventLevel.Warning, "detail", "Cancelled before start.", args.Title, args.ProductUrl);
+            _logger.LogInformation("Akakce detail iptal edildi (run cancelled): {ProductCode}", args.ProductCode);
+            await _eventLogger.LogAsync(args.ScrapeRunId, EcScrapeRunEventLevel.Warning, "detail",
+                "İptal nedeniyle atlandı.", args.Title, args.ProductUrl);
             return;
         }
 
         if (!args.ForceRefresh && await _dedupCache.IsRecentlyVisitedAsync(args.ProductCode))
         {
-            await _eventLogger.LogAsync(args.ScrapeRunId, EcScrapeRunEventLevel.Info, "detail", "Recently visited, skipped.", args.Title, args.ProductUrl);
+            _logger.LogDebug("Akakce product detail skipped (recently visited): {ProductCode}", args.ProductCode);
+            await _eventLogger.LogAsync(args.ScrapeRunId, EcScrapeRunEventLevel.Info, "detail",
+                "Yakın zamanda işlenmiş, atlanıyor.", args.Title, args.ProductUrl);
             await IncrementProcessedAsync(args.ScrapeRunId);
             await TryFinalizeRunAsync(args.ScrapeRunId);
             return;
         }
 
         var lockKey = $"akakce:lock:{args.ProductCode}";
+        // TimeSpan.Zero = sadece bir kez dene — aynı productCode zaten işleniyorsa atla (duplicate key önleme)
         var handle = _lockProvider != null
-            ? await _lockProvider.TryAcquireLockAsync(lockKey, TimeSpan.FromSeconds(30))
+            ? await _lockProvider.TryAcquireLockAsync(lockKey, TimeSpan.Zero)
             : null;
 
         if (_lockProvider != null && handle == null)
         {
-            await _eventLogger.LogAsync(args.ScrapeRunId, EcScrapeRunEventLevel.Info, "detail", "Another worker is processing this product.", args.Title, args.ProductUrl);
+            _logger.LogInformation("Akakce product detail lock alınamadı, başkası işliyor: {ProductCode}", args.ProductCode);
+            await _eventLogger.LogAsync(args.ScrapeRunId, EcScrapeRunEventLevel.Info, "detail",
+                "Başka bir worker işliyor, atlanıyor.", args.Title, args.ProductUrl);
             await IncrementProcessedAsync(args.ScrapeRunId);
             await TryFinalizeRunAsync(args.ScrapeRunId);
             return;
         }
 
+        await _eventLogger.LogAsync(args.ScrapeRunId, EcScrapeRunEventLevel.Info, "detail",
+            "Detay sayfası açılıyor…", args.Title, args.ProductUrl);
+
         var success = false;
         try
         {
-            await _eventLogger.LogAsync(args.ScrapeRunId, EcScrapeRunEventLevel.Info, "detail", "Detail page opening...", args.Title, args.ProductUrl);
             var result = await ProcessAsync(args);
 
             if (result.MarkVisitedInDedupCache)
@@ -94,16 +103,28 @@ public class AkakceProductDetailJob : AsyncBackgroundJob<AkakceProductDetailJobA
                     TimeSpan.FromSeconds(Math.Max(60, _options.CurrentValue.DedupTtlSeconds)));
             }
 
-            await _eventLogger.LogAsync(
-                args.ScrapeRunId, EcScrapeRunEventLevel.Success, "detail",
-                $"Saved - {result.OffersAdded} offers, {result.TouchedMerchantIds.Count} merchants.",
-                args.Title, args.ProductUrl);
+            if (result.MarkVisitedInDedupCache)
+            {
+                await _eventLogger.LogAsync(
+                    args.ScrapeRunId, EcScrapeRunEventLevel.Success, "detail",
+                    $"Kaydedildi — {result.OffersAdded} teklif, {result.TouchedMerchantIds.Count} mağaza.",
+                    args.Title, args.ProductUrl);
+            }
+            else
+            {
+                await _eventLogger.LogAsync(
+                    args.ScrapeRunId, EcScrapeRunEventLevel.Warning, "detail",
+                    "Geçerli teklif bulunamadı — ürün kaydedilmedi.",
+                    args.Title, args.ProductUrl);
+            }
+
             success = true;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Akakce product detail failed: {ProductCode}", args.ProductCode);
-            await _eventLogger.LogAsync(args.ScrapeRunId, EcScrapeRunEventLevel.Error, "detail", $"Failed: {ex.Message}", args.Title, args.ProductUrl);
+            _logger.LogWarning(ex, "Akakce product detail başarısız: {ProductCode}", args.ProductCode);
+            await _eventLogger.LogAsync(args.ScrapeRunId, EcScrapeRunEventLevel.Error, "detail",
+                $"Başarısız: {ex.Message}", args.Title, args.ProductUrl);
             await IncrementFailedAsync(args.ScrapeRunId);
             throw;
         }
@@ -129,24 +150,53 @@ public class AkakceProductDetailJob : AsyncBackgroundJob<AkakceProductDetailJobA
 
     private async Task<AkakceIngestionResult> ProcessAsync(AkakceProductDetailJobArgs args)
     {
-        using var uow = _unitOfWorkManager.Begin(requiresNew: true);
-
         var card = new AkakceListingCard
         {
-            ProductCode = args.ProductCode,
-            ProductUrl = args.ProductUrl,
-            Title = args.Title ?? string.Empty,
-            BrandName = args.BrandName,
-            ImageUrl = args.ImageUrl,
-            BestPriceAmount = args.BestPriceAmount,
+            ProductCode         = args.ProductCode,
+            ProductUrl          = args.ProductUrl,
+            Title               = args.Title ?? string.Empty,
+            BrandName           = args.BrandName,
+            ImageUrl            = args.ImageUrl,
+            BestPriceAmount     = args.BestPriceAmount,
             PreviousPriceAmount = args.PreviousPriceAmount,
-            OfferCount = args.OfferCount,
-            DiscountPercent = args.DiscountPercent,
+            OfferCount          = args.OfferCount,
+            DiscountPercent     = args.DiscountPercent,
         };
 
-        var result = await _ingestionService.UpsertAsync(card, args.IncludeOffers);
-        await uow.CompleteAsync();
-        return result;
+        for (var attempt = 1; attempt <= 2; attempt++)
+        {
+            try
+            {
+                using var uow = _unitOfWorkManager.Begin(requiresNew: true);
+                var result = await _ingestionService.UpsertAsync(card, args.IncludeOffers);
+                await uow.CompleteAsync();
+
+                _logger.LogInformation(
+                    "Akakce product detail done: {ProductCode} (productId={ProductId}, offers={Offers}, merchants={Merchants})",
+                    args.ProductCode, result.ProductId, result.OffersAdded, result.TouchedMerchantIds.Count);
+
+                return result;
+            }
+            catch (Exception ex) when (attempt == 1 && IsDuplicateKeyException(ex))
+            {
+                _logger.LogDebug("Akakce duplicate key, retrying as update: {ProductCode}", args.ProductCode);
+            }
+        }
+
+        throw new InvalidOperationException("Akakce ProcessAsync retry exhausted — should not reach here");
+    }
+
+    private static bool IsDuplicateKeyException(Exception ex)
+    {
+        for (var current = ex; current != null; current = current.InnerException)
+        {
+            var msg = current.Message;
+            if (msg.Contains("23505", StringComparison.Ordinal) ||
+                msg.Contains("duplicate key", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("IX_AppAkakceProducts", StringComparison.Ordinal))
+                return true;
+        }
+        return false;
     }
 
     private async Task<bool> IsCancelledAsync(Guid scrapeRunId)

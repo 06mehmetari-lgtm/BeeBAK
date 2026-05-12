@@ -19,7 +19,7 @@ public class AkakceProductIngestionService : DomainService
     private readonly AkakceProductDetailScraper _detailScraper;
     private readonly IOptionsMonitor<AkakceClientOptions> _options;
     private readonly ILogger<AkakceProductIngestionService> _logger;
-    private readonly IAkakceTelegramProductCardSender _telegramProductCardSender;
+    private readonly AkakceTelegramPublishQueue _publishQueue;
 
     public AkakceProductIngestionService(
         IAkakceProductRepository productRepository,
@@ -27,14 +27,14 @@ public class AkakceProductIngestionService : DomainService
         AkakceProductDetailScraper detailScraper,
         IOptionsMonitor<AkakceClientOptions> options,
         ILogger<AkakceProductIngestionService> logger,
-        IAkakceTelegramProductCardSender telegramProductCardSender)
+        AkakceTelegramPublishQueue publishQueue)
     {
         _productRepository = productRepository;
         _merchantRepository = merchantRepository;
         _detailScraper = detailScraper;
         _options = options;
         _logger = logger;
-        _telegramProductCardSender = telegramProductCardSender;
+        _publishQueue = publishQueue;
     }
 
     public async Task<AkakceIngestionResult> UpsertAsync(
@@ -55,6 +55,10 @@ public class AkakceProductIngestionService : DomainService
             _logger.LogWarning("Akakce PDP parse failed: {ProductUrl}", card.ProductUrl);
             return await PersistListingSnapshotOnlyAsync(card, existing, utcNow, cancellationToken);
         }
+
+        // Güncellemeden önce önceki fiyat/indirim bilgisini sakla (trigger tespiti için)
+        var prevBestPrice   = existing?.BestPriceAmount;
+        var prevDiscountPct = existing?.DiscountPercent;
 
         var product = existing ?? new AkakceProduct(
             GuidGenerator.Create(),
@@ -129,19 +133,56 @@ public class AkakceProductIngestionService : DomainService
         }
 
         await _productRepository.UpdateAsync(product, autoSave: true, cancellationToken: cancellationToken);
+
         if (offersAdded > 0)
         {
             try
             {
-                await _telegramProductCardSender.TrySendAfterProductIngestedAsync(card.ProductCode, cancellationToken);
+                var currentPrice    = card.BestPriceAmount ?? product.BestPriceAmount ?? 0m;
+                var currentDiscount = card.DiscountPercent ?? product.DiscountPercent;
+
+                var minDiscount = _options.CurrentValue.Publish.MinDiscountPercent;
+                if (currentDiscount >= minDiscount
+                    || (prevBestPrice.HasValue && currentPrice < prevBestPrice.Value * 0.97m))
+                {
+                    var triggerType = DetermineTriggerType(currentPrice, currentDiscount, prevBestPrice, prevDiscountPct, existing == null);
+                    var score = ComputeScore(currentDiscount, triggerType);
+
+                    await _publishQueue.EnqueueAsync(new AkakcePublishQueueEntry
+                    {
+                        ProductCode     = card.ProductCode,
+                        TriggerType     = triggerType,
+                        Score           = score,
+                        LowestPrice     = currentPrice,
+                        PreviousPrice   = prevBestPrice,
+                        DiscountPercent = currentDiscount,
+                    }, cancellationToken);
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Akakce Telegram kart paylaşımı başarısız: {ProductCode}", card.ProductCode);
+                _logger.LogWarning(ex, "Akakce yayın kuyruğuna eklenemedi: {ProductCode}", card.ProductCode);
             }
         }
 
         return new AkakceIngestionResult(product.Id, offersAdded, touchedMerchants, MarkVisitedInDedupCache: true);
+    }
+
+    private static string DetermineTriggerType(
+        decimal currentPrice, decimal? currentDiscount,
+        decimal? prevPrice, decimal? prevDiscount, bool isNew)
+    {
+        if (isNew) return "new";
+        if (prevPrice.HasValue && prevPrice.Value > 0m && currentPrice < prevPrice.Value * 0.97m) return "price_drop";
+        if (prevDiscount.HasValue && currentDiscount.HasValue && currentDiscount.Value > prevDiscount.Value + 2m) return "discount_up";
+        return "new";
+    }
+
+    private static double ComputeScore(decimal? discountPercent, string triggerType)
+    {
+        double score = discountPercent >= 50m ? 100 : discountPercent >= 25m ? 70 : discountPercent >= 10m ? 40 : 10;
+        score += triggerType switch { "price_drop" => 30, "discount_up" => 25, _ => 0 };
+        return score;
     }
 
     private async Task<AkakceIngestionResult> PersistListingSnapshotOnlyAsync(
