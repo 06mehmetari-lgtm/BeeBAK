@@ -263,3 +263,25 @@ export interface GetAkakceProductListInput {
   search?: string | null;
   includeOffers?: boolean;
 }
+
+// ── Monitor ──────────────────────────────────────────────────────────────────
+
+export interface TelegramSentItemDto {
+  id: string;
+  marketplace: MarketplaceKind;
+  title: string;
+  imageUrl?: string | null;
+  productUrl: string;
+  price: number;
+  previousPrice?: number | null;
+  discountPercent?: number | null;
+  triggerType: string;
+  sentAt: string;
+}
+
+export interface AllActiveRunsDto {
+  cimriRuns: CimriListingSyncStatusDto[];
+  akakceRuns: AkakceListingSyncStatusDto[];
+  recentSent: TelegramSentItemDto[];
+  telegramQueueSize: number;
+}

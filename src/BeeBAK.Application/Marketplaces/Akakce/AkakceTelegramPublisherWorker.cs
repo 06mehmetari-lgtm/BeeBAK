@@ -1,11 +1,16 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
+using BeeBAK.Ecommerce;
+using BeeBAK.Marketplaces;
 using BeeBAK.Marketplaces.Cimri;
+using BeeBAK.Marketplaces.Monitor;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Volo.Abp.BackgroundWorkers;
+using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Threading;
 
 namespace BeeBAK.Marketplaces.Akakce;
@@ -101,6 +106,29 @@ public class AkakceTelegramPublisherWorker : AsyncPeriodicBackgroundWorkerBase
             await cache.SetStringAsync(LastSendKey,
                 DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(),
                 new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(24) });
+
+            // Canlı izleme geçmişine kaydet
+            try
+            {
+                var history  = sp.GetRequiredService<TelegramSentHistory>();
+                var prodRepo = sp.GetRequiredService<IRepository<AkakceProduct, Guid>>();
+                var prods    = await prodRepo.GetListAsync(p => p.ProductCode == entry.ProductCode);
+                var prod     = prods.FirstOrDefault();
+                await history.AddAsync(new TelegramSentItemDto
+                {
+                    Id              = entry.ProductCode,
+                    Marketplace     = MarketplaceKind.Akakce,
+                    Title           = prod?.Title ?? entry.ProductCode,
+                    ImageUrl        = prod?.PrimaryImageUrl,
+                    ProductUrl      = prod?.ProductUrl ?? "",
+                    Price           = entry.LowestPrice,
+                    PreviousPrice   = entry.PreviousPrice,
+                    DiscountPercent = entry.DiscountPercent,
+                    TriggerType     = entry.TriggerType,
+                    SentAt          = DateTimeOffset.UtcNow,
+                });
+            }
+            catch { /* best-effort */ }
 
             logger.LogInformation("Akakce publisher: gönderildi ✓ ({ProductCode})", entry.ProductCode);
         }
