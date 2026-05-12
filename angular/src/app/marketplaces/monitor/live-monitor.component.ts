@@ -1,19 +1,21 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { catchError, forkJoin, of, Subscription, timer } from 'rxjs';
+import { catchError, of, Subscription, timer } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
-import { AkakceSyncService } from '../akakce-sync.service';
-import { CimriSyncService } from '../cimri-sync.service';
+import { MonitorService } from './monitor.service';
 import {
   AkakceListingSyncStatusDto,
+  AllActiveRunsDto,
   CimriListingSyncStatusDto,
   EcScrapeRunEventLevel,
   EcScrapeRunStatus,
+  MarketplaceKind,
+  TelegramSentItemDto,
 } from '../marketplace.models';
 
-const REFRESH_MS = 10_000;
-const MAX_EVENTS = 15;
+const REFRESH_MS = 8_000;
+const MAX_EVENTS = 8;
 
 @Component({
   selector: 'app-live-monitor',
@@ -23,30 +25,28 @@ const MAX_EVENTS = 15;
   styleUrls: ['./live-monitor.component.scss'],
 })
 export class LiveMonitorComponent implements OnInit, OnDestroy {
-  private readonly cimriSvc = inject(CimriSyncService);
-  private readonly akakceSvc = inject(AkakceSyncService);
+  private readonly monitorSvc = inject(MonitorService);
 
-  readonly levelEnum = EcScrapeRunEventLevel;
-  readonly statusEnum = EcScrapeRunStatus;
+  readonly levelEnum     = EcScrapeRunEventLevel;
+  readonly statusEnum    = EcScrapeRunStatus;
+  readonly marketplaceKind = MarketplaceKind;
 
-  readonly cimri = signal<CimriListingSyncStatusDto | null>(null);
-  readonly akakce = signal<AkakceListingSyncStatusDto | null>(null);
-  readonly lastRefresh = signal<Date | null>(null);
-  readonly isRefreshing = signal(false);
-  readonly error = signal<string | null>(null);
+  readonly data           = signal<AllActiveRunsDto | null>(null);
+  readonly lastRefresh    = signal<Date | null>(null);
+  readonly isRefreshing   = signal(false);
+  readonly error          = signal<string | null>(null);
 
-  readonly cimriActive = computed(() => this.cimri()?.isActive === true);
-  readonly akakceActive = computed(() => this.akakce()?.isActive === true);
-  readonly anyActive = computed(() => this.cimriActive() || this.akakceActive());
+  readonly cimriRuns  = computed(() => this.data()?.cimriRuns  ?? []);
+  readonly akakceRuns = computed(() => this.data()?.akakceRuns ?? []);
+  readonly recentSent = computed(() => this.data()?.recentSent ?? []);
+  readonly queueSize  = computed(() => this.data()?.telegramQueueSize ?? 0);
 
-  readonly cimriProgress = computed(() => Math.round((this.cimri()?.progress ?? 0) * 100));
-  readonly akakceProgress = computed(() => Math.round((this.akakce()?.progress ?? 0) * 100));
-
-  readonly cimriEvents = computed(() =>
-    (this.cimri()?.events ?? []).slice(-MAX_EVENTS).reverse()
+  readonly anyActive = computed(() =>
+    [...this.cimriRuns(), ...this.akakceRuns()].some(r => r.isActive)
   );
-  readonly akakceEvents = computed(() =>
-    (this.akakce()?.events ?? []).slice(-MAX_EVENTS).reverse()
+
+  readonly activeRunCount = computed(() =>
+    [...this.cimriRuns(), ...this.akakceRuns()].filter(r => r.isActive).length
   );
 
   private sub?: Subscription;
@@ -56,23 +56,23 @@ export class LiveMonitorComponent implements OnInit, OnDestroy {
       .pipe(
         switchMap(() => {
           this.isRefreshing.set(true);
-          return forkJoin({
-            cimri: this.cimriSvc.getLatest().pipe(catchError(() => of(null))),
-            akakce: this.akakceSvc.getLatest().pipe(catchError(() => of(null))),
-          });
+          return this.monitorSvc.getAllActive().pipe(catchError(() => of(null)));
         }),
       )
       .subscribe({
-        next: ({ cimri, akakce }) => {
-          this.cimri.set(cimri);
-          this.akakce.set(akakce);
+        next: dto => {
+          if (dto) {
+            this.data.set(dto);
+            this.error.set(null);
+          } else {
+            this.error.set('API erişilemiyor');
+          }
           this.lastRefresh.set(new Date());
           this.isRefreshing.set(false);
-          this.error.set(null);
         },
         error: () => {
           this.isRefreshing.set(false);
-          this.error.set('Veri alınamadı — API erişilemiyor');
+          this.error.set('Veri alınamadı');
         },
       });
   }
@@ -81,24 +81,41 @@ export class LiveMonitorComponent implements OnInit, OnDestroy {
     this.sub?.unsubscribe();
   }
 
+  // ── Helpers ──────────────────────────────────────────────────────────
+
+  eventsOf(run: CimriListingSyncStatusDto | AkakceListingSyncStatusDto): any[] {
+    return (run.events ?? []).slice(-MAX_EVENTS).reverse();
+  }
+
+  progress(run: CimriListingSyncStatusDto | AkakceListingSyncStatusDto): number {
+    return Math.round((run.progress ?? 0) * 100);
+  }
+
+  urlLabel(url?: string | null): string {
+    if (!url) return '—';
+    try {
+      const u = new URL(url);
+      return u.pathname + (u.search || '');
+    } catch { return url; }
+  }
+
   statusLabel(status: EcScrapeRunStatus | undefined): string {
     switch (status) {
-      case EcScrapeRunStatus.Running: return 'Çalışıyor';
-      case EcScrapeRunStatus.Pending: return 'Bekliyor';
+      case EcScrapeRunStatus.Running:   return 'Çalışıyor';
+      case EcScrapeRunStatus.Pending:   return 'Bekliyor';
       case EcScrapeRunStatus.Completed: return 'Tamamlandı';
-      case EcScrapeRunStatus.Failed: return 'Hata';
+      case EcScrapeRunStatus.Failed:    return 'Hata';
       case EcScrapeRunStatus.Cancelled: return 'İptal';
-      default: return 'Bilinmiyor';
+      default: return '—';
     }
   }
 
-  statusClass(s: CimriListingSyncStatusDto | AkakceListingSyncStatusDto | null): string {
-    if (!s) return '';
-    if (s.cancelRequested && s.isActive) return 'cancelling';
-    switch (s.status) {
-      case EcScrapeRunStatus.Running: return 'running';
+  statusClass(run: CimriListingSyncStatusDto | AkakceListingSyncStatusDto | null): string {
+    if (!run) return '';
+    switch (run.status) {
+      case EcScrapeRunStatus.Running:   return 'running';
       case EcScrapeRunStatus.Completed: return 'completed';
-      case EcScrapeRunStatus.Failed: return 'failed';
+      case EcScrapeRunStatus.Failed:    return 'failed';
       case EcScrapeRunStatus.Cancelled: return 'cancelled';
       default: return '';
     }
@@ -108,7 +125,7 @@ export class LiveMonitorComponent implements OnInit, OnDestroy {
     switch (level) {
       case EcScrapeRunEventLevel.Success: return 'evt-ok';
       case EcScrapeRunEventLevel.Warning: return 'evt-warn';
-      case EcScrapeRunEventLevel.Error: return 'evt-err';
+      case EcScrapeRunEventLevel.Error:   return 'evt-err';
       default: return 'evt-info';
     }
   }
@@ -117,9 +134,25 @@ export class LiveMonitorComponent implements OnInit, OnDestroy {
     switch (level) {
       case EcScrapeRunEventLevel.Success: return '✓';
       case EcScrapeRunEventLevel.Warning: return '!';
-      case EcScrapeRunEventLevel.Error: return '✕';
+      case EcScrapeRunEventLevel.Error:   return '✕';
       default: return '›';
     }
+  }
+
+  triggerLabel(t: string): string {
+    switch (t) {
+      case 'price_drop':   return '📉 Fiyat Düştü';
+      case 'discount_up':  return '🔥 İndirim Arttı';
+      case 'new':          return '✨ Yeni';
+      default:             return t;
+    }
+  }
+
+  discountClass(pct?: number | null): string {
+    if (!pct) return '';
+    if (pct >= 40) return 'disc--hot';
+    if (pct >= 20) return 'disc--warm';
+    return 'disc--cool';
   }
 
   formatTime(iso: string): string {
@@ -140,5 +173,17 @@ export class LiveMonitorComponent implements OnInit, OnDestroy {
   formatTs(d: Date | null): string {
     if (!d) return '—';
     return d.toLocaleTimeString('tr-TR', { hour12: false });
+  }
+
+  formatSentAgo(iso: string): string {
+    const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (diff < 60)  return `${diff}sn önce`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}dk önce`;
+    return `${Math.floor(diff / 3600)}sa önce`;
+  }
+
+  formatPrice(price?: number | null): string {
+    if (price == null) return '—';
+    return price.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 });
   }
 }

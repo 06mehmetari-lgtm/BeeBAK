@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using BeeBAK.Ecommerce;
 using BeeBAK.Marketplaces.Cimri.Logging;
@@ -67,68 +68,94 @@ public class AkakceListingDiscoveryJob : AsyncBackgroundJob<AkakceListingDiscove
             return;
         }
 
-        var cardsByCode = new Dictionary<string, AkakceListingCard>(StringComparer.Ordinal);
-        for (var page = 1; page <= maxPages && cardsByCode.Count < maxProducts; page++)
+        if (await IsCancelledAsync(args.ScrapeRunId))
         {
-            if (await IsCancelledAsync(args.ScrapeRunId))
-            {
-                await MarkRunCancelledAsync(args.ScrapeRunId);
-                return;
-            }
+            await MarkRunCancelledAsync(args.ScrapeRunId);
+            return;
+        }
 
-            var pageUrl = AkakceListingUrlResolver.BuildPageUrl(listingUrl, page);
-            string? html;
+        // ── Tüm sayfaları paralel olarak Selenium'dan çek ──────────────
+        var pageUrls = Enumerable.Range(1, maxPages)
+            .Select(p => (page: p, url: AkakceListingUrlResolver.BuildPageUrl(listingUrl, p)))
+            .ToList();
+
+        await _eventLogger.LogAsync(
+            args.ScrapeRunId, EcScrapeRunEventLevel.Info, "discovery",
+            $"{maxPages} sayfa paralel olarak çekiliyor (Selenium Grid).",
+            url: listingUrl, index: 0, total: maxPages);
+
+        // Aynı anda en fazla 6 Selenium oturumu (Grid kapasitesi)
+        var sem = new System.Threading.SemaphoreSlim(6, 6);
+
+        var fetchTasks = pageUrls.Select(async item =>
+        {
+            await sem.WaitAsync();
             try
             {
-                html = await _seleniumPageFetcher.TryGetListingHtmlAsync(pageUrl, options);
+                var html = await _seleniumPageFetcher.TryGetListingHtmlAsync(item.url, options);
+                return (item.page, item.url, html, error: (string?)null);
             }
             catch (Exception ex)
             {
-                await _eventLogger.LogAsync(args.ScrapeRunId, EcScrapeRunEventLevel.Error, "discovery", $"Listing fetch failed: {ex.Message}", url: pageUrl);
-                await MarkRunFailedAsync(args.ScrapeRunId, ex.Message);
-                throw;
+                _logger.LogWarning("Akakce page fetch failed (page={Page}, url={Url}): {Msg}",
+                    item.page, item.url, ex.Message);
+                return (item.page, item.url, html: (string?)null, error: ex.Message);
+            }
+            finally { sem.Release(); }
+        }).ToList();
+
+        var pageResults = await System.Threading.Tasks.Task.WhenAll(fetchTasks);
+
+        // ── Gelen sayfaları işle ────────────────────────────────────────
+        var cardsByCode = new Dictionary<string, AkakceListingCard>(StringComparer.Ordinal);
+        var successfulPages = 0;
+
+        foreach (var (page, pageUrl, html, error) in pageResults.OrderBy(r => r.page))
+        {
+            if (error != null)
+            {
+                await _eventLogger.LogAsync(args.ScrapeRunId, EcScrapeRunEventLevel.Warning,
+                    "discovery", $"Sayfa {page} alınamadı: {error}", url: pageUrl, index: page, total: maxPages);
+                continue;
             }
 
             if (string.IsNullOrWhiteSpace(html))
             {
-                await _eventLogger.LogAsync(args.ScrapeRunId, EcScrapeRunEventLevel.Error, "discovery", "Listing page returned empty HTML.", url: pageUrl);
-                await MarkRunFailedAsync(args.ScrapeRunId, "Empty listing HTML");
-                throw new BusinessException("BeeBAK:AkakceListingHtmlEmpty").WithData("ListingUrl", pageUrl);
+                await _eventLogger.LogAsync(args.ScrapeRunId, EcScrapeRunEventLevel.Warning,
+                    "discovery", $"Sayfa {page} boş HTML döndürdü.", url: pageUrl, index: page, total: maxPages);
+                continue;
             }
 
+            successfulPages++;
             var candidateCount = AkakceListingHtmlParser.CountCandidateCards(html);
-            var pageCards = AkakceListingHtmlParser.Parse(html, options.BaseUrl);
+            var pageCards      = AkakceListingHtmlParser.Parse(html, options.BaseUrl);
+
             await _eventLogger.LogAsync(
                 args.ScrapeRunId, EcScrapeRunEventLevel.Info, "discovery",
-                $"Page {page}: {pageCards.Count} linked product cards parsed.",
+                $"Sayfa {page}: {pageCards.Count} ürün kartı parse edildi.",
                 url: pageUrl, index: page, total: maxPages);
 
             if (candidateCount > pageCards.Count)
             {
-                await _eventLogger.LogAsync(
-                    args.ScrapeRunId,
-                    EcScrapeRunEventLevel.Warning,
+                await _eventLogger.LogAsync(args.ScrapeRunId, EcScrapeRunEventLevel.Warning,
                     "discovery",
-                    $"Page {page}: {candidateCount - pageCards.Count} product cards skipped because no detail link could be parsed.",
-                    url: pageUrl,
-                    index: page,
-                    total: maxPages);
+                    $"Sayfa {page}: {candidateCount - pageCards.Count} kart detay linki olmadığı için atlandı.",
+                    url: pageUrl, index: page, total: maxPages);
             }
 
             foreach (var card in pageCards)
             {
-                if (cardsByCode.Count >= maxProducts)
-                {
-                    break;
-                }
-
+                if (cardsByCode.Count >= maxProducts) break;
                 cardsByCode.TryAdd(card.ProductCode, card);
             }
+        }
 
-            if (pageCards.Count == 0)
-            {
-                break;
-            }
+        if (successfulPages == 0)
+        {
+            await _eventLogger.LogAsync(args.ScrapeRunId, EcScrapeRunEventLevel.Error,
+                "discovery", "Hiçbir sayfa alınamadı — tüm Selenium istekleri başarısız.");
+            await MarkRunFailedAsync(args.ScrapeRunId, "All page fetches failed");
+            throw new BusinessException("BeeBAK:AkakceListingHtmlEmpty").WithData("ListingUrl", listingUrl);
         }
 
         var cards = AkakceListingCardSorter.SortByDiscountDescending(cardsByCode.Values).Take(maxProducts).ToList();

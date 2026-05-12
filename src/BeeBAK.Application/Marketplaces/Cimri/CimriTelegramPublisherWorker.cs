@@ -1,10 +1,15 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
+using BeeBAK.Ecommerce;
+using BeeBAK.Marketplaces;
+using BeeBAK.Marketplaces.Monitor;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Volo.Abp.BackgroundWorkers;
+using Volo.Abp.Domain.Repositories;
 using Volo.Abp.Threading;
 
 namespace BeeBAK.Marketplaces.Cimri;
@@ -147,6 +152,29 @@ public class CimriTelegramPublisherWorker : AsyncPeriodicBackgroundWorkerBase
                 {
                     AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(24),
                 });
+
+            // ── 8. Canlı izleme geçmişine kaydet ─────────────────────────
+            try
+            {
+                var history = sp.GetRequiredService<TelegramSentHistory>();
+                var prodRepo = sp.GetRequiredService<IRepository<CimriProduct, Guid>>();
+                var prods = await prodRepo.GetListAsync(p => p.ContentId == entry.ContentId);
+                var prod  = prods.FirstOrDefault();
+                await history.AddAsync(new TelegramSentItemDto
+                {
+                    Id            = entry.ContentId,
+                    Marketplace   = MarketplaceKind.Cimri,
+                    Title         = prod?.Title ?? entry.ContentId,
+                    ImageUrl      = prod?.PrimaryImageUrl,
+                    ProductUrl    = prod?.ProductUrl ?? "",
+                    Price         = entry.LowestPrice,
+                    PreviousPrice = entry.PreviousPrice,
+                    DiscountPercent = entry.DiscountPercent,
+                    TriggerType   = entry.TriggerType,
+                    SentAt        = DateTimeOffset.UtcNow,
+                });
+            }
+            catch { /* best-effort */ }
 
             logger.LogInformation(
                 "Telegram publisher: gönderildi ✓ ({ContentId})", entry.ContentId);
