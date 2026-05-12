@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Tasks;
 using BeeBAK.Ecommerce;
 using BeeBAK.Marketplaces.Akakce.Jobs;
 using BeeBAK.Marketplaces.Cimri.Logging;
 using Medallion.Threading;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -20,15 +23,13 @@ namespace BeeBAK.Marketplaces.Akakce;
 
 /// <summary>
 /// Robot 1 — Akakçe tarama motoru.
-/// Her tur tüm yapılandırılmış kategori URL'lerini AYNI ANDA kuyruğa alır.
-/// Önceki tur henüz bitmemişse (aktif run varsa) bu tur atlanır.
+/// Her URL bağımsız cooldown'la çalışır. Biri bitmeden diğeri başlar.
 /// </summary>
 public class AkakceAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
 {
-    private const string MutexKey = "akakce:autosync:mutex";
-
-    private static readonly TimeSpan StuckRunThreshold  = TimeSpan.FromMinutes(90);
-    private static readonly TimeSpan ActiveRunThreshold = TimeSpan.FromMinutes(90);
+    private const string MutexKey          = "akakce:autosync:mutex";
+    private const string CooldownKeyPrefix = "beebak:akakce:url:cd:";
+    private static readonly TimeSpan StuckRunThreshold = TimeSpan.FromMinutes(90);
 
     public AkakceAutoSyncWorker(
         AbpAsyncTimer timer,
@@ -37,12 +38,9 @@ public class AkakceAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
         : base(timer, serviceScopeFactory)
     {
         var autoSync = options.Value.AutoSync;
-
-        if (autoSync.CategoryUrls.Count > 0 && autoSync.CategoryIntervalMinutes > 0)
-            Timer.Period = (int)TimeSpan.FromMinutes(autoSync.CategoryIntervalMinutes).TotalMilliseconds;
-        else
-            Timer.Period = (int)TimeSpan.FromHours(Math.Max(1, autoSync.IntervalHours)).TotalMilliseconds;
-
+        Timer.Period = (int)TimeSpan.FromMinutes(
+            autoSync.CategoryIntervalMinutes > 0 ? autoSync.CategoryIntervalMinutes : 30
+        ).TotalMilliseconds;
         Timer.RunOnStart = autoSync.RunOnStart;
     }
 
@@ -67,14 +65,8 @@ public class AkakceAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
             }
         }
 
-        try
-        {
-            await RunSyncAsync(sp, options, logger);
-        }
-        finally
-        {
-            if (mutexHandle != null) await mutexHandle.DisposeAsync();
-        }
+        try { await RunSyncAsync(sp, options, logger); }
+        finally { if (mutexHandle != null) await mutexHandle.DisposeAsync(); }
     }
 
     private static async Task RunSyncAsync(
@@ -85,8 +77,9 @@ public class AkakceAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
         var scrapeRunRepo = sp.GetRequiredService<IRepository<EcScrapeRun, Guid>>();
         var uowManager    = sp.GetRequiredService<IUnitOfWorkManager>();
         var clock         = sp.GetRequiredService<IClock>();
+        var cache         = sp.GetRequiredService<IDistributedCache>();
 
-        // Takılı run self-heal
+        // Self-heal
         try
         {
             using var uow = uowManager.Begin(requiresNew: true);
@@ -97,53 +90,62 @@ public class AkakceAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
                 r.StartedUtc < stuckCutoff);
             foreach (var stuck in stuckRuns)
             {
-                stuck.Fail(clock.Now, "self-heal: 90 dakikadan uzun Running kaldı");
+                stuck.Fail(clock.Now, "self-heal: 90 dk+ Running kaldı");
                 await scrapeRunRepo.UpdateAsync(stuck, autoSave: true);
-                logger.LogWarning(
-                    "AkakceAutoSync: takılı run self-heal ile Failed yapıldı (runId={RunId}, başladı={Started:HH:mm} UTC).",
-                    stuck.Id, stuck.StartedUtc);
+                logger.LogWarning("AkakceAutoSync: takılı run temizlendi (runId={RunId}).", stuck.Id);
             }
             await uow.CompleteAsync();
         }
-        catch (Exception ex) { logger.LogWarning(ex, "AkakceAutoSync: self-heal başarısız, devam ediliyor."); }
+        catch (Exception ex) { logger.LogWarning(ex, "AkakceAutoSync: self-heal hatası."); }
 
-        // Aktif tarama var mı? Varsa bu turu atla
-        try
-        {
-            using var uow = uowManager.Begin(requiresNew: true);
-            var recentCutoff = DateTime.UtcNow - ActiveRunThreshold;
-            var activeRuns = await scrapeRunRepo.GetListAsync(r =>
-                r.Marketplace == MarketplaceKind.Akakce &&
-                r.Status == EcScrapeRunStatus.Running &&
-                r.StartedUtc >= recentCutoff);
-            await uow.CompleteAsync();
+        var allUrls   = GetAllListingUrls(options);
+        var cooldownM = options.AutoSync.CategoryIntervalMinutes > 0
+            ? options.AutoSync.CategoryIntervalMinutes * 2
+            : (int)TimeSpan.FromHours(options.AutoSync.IntervalHours).TotalMinutes;
 
-            if (activeRuns.Count > 0)
-            {
-                logger.LogInformation(
-                    "AkakceAutoSync: {Count} aktif tarama devam ediyor — bu tur atlanıyor.", activeRuns.Count);
-                return;
-            }
-        }
-        catch (Exception ex) { logger.LogWarning(ex, "AkakceAutoSync: aktif tarama kontrolü başarısız."); }
-
-        // Tüm URL'leri aynı anda kuyruğa al
-        var allUrls = GetAllListingUrls(options);
         var maxPages    = Math.Max(1, options.AutoSync.MaxPages);
         var maxProducts = Math.Max(1, options.AutoSync.MaxProducts);
 
         var guidGenerator = sp.GetRequiredService<IGuidGenerator>();
         var jobManager    = sp.GetRequiredService<IBackgroundJobManager>();
 
-        logger.LogInformation(
-            "AkakceAutoSync: {Count} URL aynı anda kuyruğa alınıyor (maxPages={P}, maxProducts={Prod}).",
-            allUrls.Count, maxPages, maxProducts);
-
+        int enqueued = 0;
         foreach (var url in allUrls)
         {
+            var cdKey = CooldownKeyPrefix + GetHash(url);
+
+            try
+            {
+                var cd = await cache.GetAsync(cdKey);
+                if (cd != null)
+                {
+                    logger.LogDebug("AkakceAutoSync: {Url} cooldown'da — atlanıyor.", url);
+                    continue;
+                }
+            }
+            catch { }
+
+            try
+            {
+                await cache.SetAsync(
+                    cdKey,
+                    Encoding.UTF8.GetBytes(DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString()),
+                    new DistributedCacheEntryOptions
+                    {
+                        AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(cooldownM)
+                    });
+            }
+            catch { }
+
             await EnqueueUrlAsync(sp, url, maxPages, maxProducts,
                 scrapeRunRepo, uowManager, clock, guidGenerator, jobManager, logger);
+            enqueued++;
         }
+
+        if (enqueued > 0)
+            logger.LogInformation("AkakceAutoSync: {Count}/{Total} URL kuyruğa alındı.", enqueued, allUrls.Count);
+        else
+            logger.LogDebug("AkakceAutoSync: tüm URL'ler cooldown'da — bu tur atlandı.");
     }
 
     private static async Task EnqueueUrlAsync(
@@ -173,7 +175,7 @@ public class AkakceAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "AkakceAutoSync: tarama kaydı oluşturulamadı (url={Url}).", url);
+            logger.LogError(ex, "AkakceAutoSync: scrape run oluşturulamadı (url={Url}).", url);
             return;
         }
 
@@ -189,12 +191,11 @@ public class AkakceAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
                 ListingPageUrl = url,
             });
 
-            logger.LogInformation(
-                "AkakceAutoSync: kuyruğa alındı (runId={RunId}, url={Url})", scrapeRun.Id, url);
+            logger.LogInformation("AkakceAutoSync: kuyruğa alındı (runId={RunId}, url={Url})", scrapeRun.Id, url);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "AkakceAutoSync: kuyruğa atma başarısız (runId={RunId}, url={Url}).", scrapeRun.Id, url);
+            logger.LogError(ex, "AkakceAutoSync: kuyruğa atma hatası (runId={RunId}).", scrapeRun.Id);
             try
             {
                 using var uow = uowManager.Begin(requiresNew: true);
@@ -202,7 +203,7 @@ public class AkakceAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
                 if (run != null) { run.Fail(clock.Now, ex.Message); await scrapeRunRepo.UpdateAsync(run, autoSave: true); }
                 await uow.CompleteAsync();
             }
-            catch { /* best-effort */ }
+            catch { }
         }
     }
 
@@ -211,10 +212,16 @@ public class AkakceAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
         if (options.AutoSync.CategoryUrls.Count > 0)
             return options.AutoSync.CategoryUrls;
 
-        var single = !string.IsNullOrWhiteSpace(options.AutoSync.ListingPageUrl)
-            ? options.AutoSync.ListingPageUrl
-            : options.ListingPageUrl ?? "https://www.akakce.com/fiyati-dusen-urunler/?s=5";
+        return new List<string>
+        {
+            !string.IsNullOrWhiteSpace(options.AutoSync.ListingPageUrl) ? options.AutoSync.ListingPageUrl
+            : options.ListingPageUrl ?? "https://www.akakce.com/fiyati-dusen-urunler/?s=5"
+        };
+    }
 
-        return new List<string> { single };
+    private static string GetHash(string url)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(url));
+        return Convert.ToHexString(bytes)[..12].ToLowerInvariant();
     }
 }
