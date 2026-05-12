@@ -50,10 +50,11 @@ services:
     container_name: beebak-selenium-hub
     restart: unless-stopped
     environment:
-      SE_NODE_MAX_SESSIONS: "2"
-      GRID_NEW_SESSION_WAIT_TIMEOUT: "60000"
-      GRID_BROWSER_TIMEOUT: "120"
-      GRID_TIMEOUT: "300"
+      # 6 eş zamanlı URL için hub kapasitesi artırıldı
+      SE_NODE_MAX_SESSIONS: "6"
+      GRID_NEW_SESSION_WAIT_TIMEOUT: "120000"
+      GRID_BROWSER_TIMEOUT: "300"
+      GRID_TIMEOUT: "600"
     ports:
       - "4442:4442"
       - "4443:4443"
@@ -81,17 +82,18 @@ services:
       SE_EVENT_BUS_HOST: selenium-hub
       SE_EVENT_BUS_PUBLISH_PORT: "4442"
       SE_EVENT_BUS_SUBSCRIBE_PORT: "4443"
-      SE_NODE_MAX_SESSIONS: "1"
+      SE_NODE_MAX_SESSIONS: "2"
       SE_NODE_OVERRIDE_MAX_SESSIONS: "true"
-      SE_NODE_SESSION_TIMEOUT: "180"
+      SE_NODE_SESSION_TIMEOUT: "300"
       SE_VNC_NO_PASSWORD: "1"
       SE_OPTS: "--detect-drivers true"
     deploy:
-      replicas: 2
+      # 3 node × 2 session = 6 eş zamanlı Selenium oturumu
+      replicas: 3
       resources:
         limits:
-          cpus: "1.5"
-          memory: 900M
+          cpus: "1.0"
+          memory: 800M
 
   dbmigrator:
     build:
@@ -263,21 +265,16 @@ services:
       Cimri__Publish__MinDiscountPercent: "10"
       Cimri__Publish__QuietStartHour: "3"
       Cimri__Publish__QuietEndHour: "6"
-      # ── Robot 1: Cimri otomatik periyodik tarama (kategori rotasyonlu) ──────
+      # ── Robot 1: Cimri — 3 URL AYNI ANDA taranır ───────────────────────────
       Cimri__AutoSync__Enabled: "true"
-      Cimri__AutoSync__IntervalHours: "1"
+      Cimri__AutoSync__IntervalHours: "2"
       Cimri__AutoSync__CategoryIntervalMinutes: "30"
       Cimri__AutoSync__RunOnStart: "true"
-      Cimri__AutoSync__ListingPageUrl: "https://www.cimri.com/indirimli-urunler"
       Cimri__AutoSync__MaxPages: "15"
       Cimri__AutoSync__MaxProducts: "1000"
-      # Kategori rotasyonu — her 30 dk'da bir sıradaki kategori taranır
-      Cimri__AutoSync__CategoryUrls__0: "https://www.cimri.com/indirimli-urunler"
-      Cimri__AutoSync__CategoryUrls__1: "https://www.cimri.com/telefon-aksesuarlari"
-      Cimri__AutoSync__CategoryUrls__2: "https://www.cimri.com/bilgisayar-ve-tablet"
-      Cimri__AutoSync__CategoryUrls__3: "https://www.cimri.com/elektronik"
-      Cimri__AutoSync__CategoryUrls__4: "https://www.cimri.com/ev-yasam"
-      Cimri__AutoSync__CategoryUrls__5: "https://www.cimri.com/spor-outdoor"
+      Cimri__AutoSync__CategoryUrls__0: "https://www.cimri.com/indirimli-urunler?sort=new%2Cdesc"
+      Cimri__AutoSync__CategoryUrls__1: "https://www.cimri.com/indirimli-urunler?sort=discount%2Cdesc"
+      Cimri__AutoSync__CategoryUrls__2: "https://www.cimri.com/indirimli-urunler"
       # ── Robot 2: Cimri fiyat izleme ─────────────────────────────────────────
       Cimri__PriceWatch__Enabled: "true"
       Cimri__PriceWatch__IntervalMinutes: "120"
@@ -285,20 +282,16 @@ services:
       Cimri__PriceWatch__ProductAgeDays: "2"
       Cimri__PriceWatch__ResyncAfterMinutes: "90"
       Cimri__PriceWatch__MaxProductsPerRun: "200"
-      # ── Robot 1: Akakçe otomatik periyodik tarama (kategori rotasyonlu) ──────
+      # ── Robot 1: Akakçe — 3 URL AYNI ANDA taranır ──────────────────────────
       Akakce__AutoSync__Enabled: "true"
-      Akakce__AutoSync__IntervalHours: "1"
+      Akakce__AutoSync__IntervalHours: "2"
       Akakce__AutoSync__CategoryIntervalMinutes: "30"
       Akakce__AutoSync__RunOnStart: "true"
-      Akakce__AutoSync__ListingPageUrl: "https://www.akakce.com/fiyati-dusen-urunler/?s=5"
       Akakce__AutoSync__MaxPages: "10"
       Akakce__AutoSync__MaxProducts: "500"
-      # Kategori rotasyonu
-      Akakce__AutoSync__CategoryUrls__0: "https://www.akakce.com/fiyati-dusen-urunler/?s=5"
-      Akakce__AutoSync__CategoryUrls__1: "https://www.akakce.com/telefon/"
-      Akakce__AutoSync__CategoryUrls__2: "https://www.akakce.com/bilgisayar/"
-      Akakce__AutoSync__CategoryUrls__3: "https://www.akakce.com/elektronik/"
-      Akakce__AutoSync__CategoryUrls__4: "https://www.akakce.com/ev-yasam/"
+      Akakce__AutoSync__CategoryUrls__0: "https://www.akakce.com/fiyati-dusen-urunler/?p=1"
+      Akakce__AutoSync__CategoryUrls__1: "https://www.akakce.com/fiyati-dusen-urunler/?s=5"
+      Akakce__AutoSync__CategoryUrls__2: "https://www.akakce.com/fiyati-dusen-urunler/?s=3"
       # ── Robot 2: Akakçe fiyat izleme ─────────────────────────────────────────
       Akakce__PriceWatch__Enabled: "true"
       Akakce__PriceWatch__IntervalMinutes: "120"
