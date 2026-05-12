@@ -35,6 +35,13 @@ export const APP_ROUTES: Routes = [
         canActivate: [permissionGuard],
         data: { requiredPolicy: 'BeeBAK.Hepsiburada' },
       },
+      {
+        path: 'monitor',
+        loadComponent: () =>
+          import('./marketplaces/monitor/live-monitor.component').then(m => m.LiveMonitorComponent),
+        canActivate: [permissionGuard],
+        data: { requiredPolicy: 'BeeBAK.Cimri' },
+      },
     ],
   },
   {

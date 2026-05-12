@@ -663,7 +663,8 @@ export class CimriProductsComponent implements OnInit, OnDestroy, AfterViewCheck
       merchantName: (o.merchantName || o.offerTitle || o.sellerName || 'Mağaza').trim(),
       price: o.price,
       currency: o.currency || fallbackCcy,
-      url: (o.merchantProductUrl || o.offerUrl || p.productUrl).trim(),
+      // offerUrl (cimri.com/offer/xxx) Telegram'da çalışmaz — sadece doğrudan mağaza URL'si
+      url: (o.merchantProductUrl || p.productUrl).trim(),
     }));
   }
 

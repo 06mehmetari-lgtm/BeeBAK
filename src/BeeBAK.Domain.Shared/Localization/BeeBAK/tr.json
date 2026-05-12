@@ -142,6 +142,7 @@
                   "Permission:Akakce":  "Akakce",
                   "Permission:Akakce.Sync":  "Akakçe fiyatı düşen ürün senkronu",
                   "Menu:MarketplacesAkakce":  "Akakçe fiyatı düşenler",
+                  "Menu:MarketplacesMonitor":  "Canlı İzleme",
                   "AkakceProductsTitle":  "Akakçe - en çok düşenler",
                   "AkakcePullIntro":  "Akakçe en çok düşenler listesini Selenium ile çeker, ürün detaylarını RabbitMQ üzerinden işler ve ürün, satıcı, teklif kayıtlarını Cimri\u0027den ayrı saklar.",
                   "AkakceSyncNow":  "Çek ve veritabanına kaydet",

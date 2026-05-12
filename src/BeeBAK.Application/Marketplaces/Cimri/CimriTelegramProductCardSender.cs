@@ -46,7 +46,10 @@ public class CimriTelegramProductCardSender : ICimriTelegramProductCardSender, I
         _distributedCache = distributedCache;
     }
 
-    public async Task TrySendAfterProductIngestedAsync(string contentId, CancellationToken cancellationToken = default)
+    public async Task TrySendAfterProductIngestedAsync(
+        string contentId,
+        string triggerType = "new",
+        CancellationToken cancellationToken = default)
     {
         var opts = _options.CurrentValue.Telegram;
         if (!opts.ShareProductCardsOnIngest)
@@ -57,17 +60,6 @@ public class CimriTelegramProductCardSender : ICimriTelegramProductCardSender, I
         if (string.IsNullOrWhiteSpace(opts.BotToken) || string.IsNullOrWhiteSpace(opts.ChatId))
         {
             return;
-        }
-
-        var dedupHours = Math.Clamp(opts.TelegramCardDedupHours, 0, 168);
-        if (dedupHours > 0 && _distributedCache != null)
-        {
-            var dedupKey = $"beebak:tg-share-card:{contentId.Trim()}";
-            var existing = await _distributedCache.GetStringAsync(dedupKey, cancellationToken);
-            if (!string.IsNullOrEmpty(existing))
-            {
-                return;
-            }
         }
 
         var product = await _productRepository.FindByContentIdAsync(contentId, includeOffers: true, cancellationToken);
@@ -92,7 +84,7 @@ public class CimriTelegramProductCardSender : ICimriTelegramProductCardSender, I
             return;
         }
 
-        var caption = BuildCaptionHtml(product, merchantsById);
+        var caption = BuildCaptionHtml(product, merchantsById, triggerType);
         if (caption.Length > 1024)
         {
             caption = caption[..1021] + "…";
@@ -121,32 +113,36 @@ public class CimriTelegramProductCardSender : ICimriTelegramProductCardSender, I
             ok = await TrySendMessageAsync(client, token, chatId, caption, cancellationToken);
         }
 
-        if (ok && dedupHours > 0 && _distributedCache != null)
-        {
-            await _distributedCache.SetStringAsync(
-                $"beebak:tg-share-card:{contentId.Trim()}",
-                "1",
-                new DistributedCacheEntryOptions
-                {
-                    AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(dedupHours),
-                },
-                cancellationToken);
-        }
+        _ = ok; // sonuç publisher worker tarafından loglanır
     }
 
     private static bool IsEligibleShareVisual(CimriProduct product, decimal minDiscountPercent)
     {
-        if (product.DiscountPercent >= minDiscountPercent)
-        {
-            return HasClickableOffer(product);
-        }
+        if (!HasClickableOffer(product)) return false;
 
-        if (product.PreviousPriceAmount is > 0m
-            && product.BestPriceAmount is > 0m
-            && product.PreviousPriceAmount > product.BestPriceAmount)
+        var offers = product.Offers.OrderBy(o => o.Price).ToList();
+        if (offers.Count == 0) return false;
+
+        var lowest = offers[0].Price;
+
+        // Gerçek piyasa avantajı hesapla (sahte indirim filtresi)
+        decimal? realDiscount = null;
+        if (offers.Count >= 2)
         {
-            return HasClickableOffer(product);
+            var maxOffer = offers.Max(o => o.Price);
+            if (maxOffer > lowest)
+                realDiscount = (maxOffer - lowest) / maxOffer * 100m;
         }
+        if (!realDiscount.HasValue && product.PreviousPriceAmount is > 0m && product.PreviousPriceAmount > lowest)
+            realDiscount = (product.PreviousPriceAmount.Value - lowest) / product.PreviousPriceAmount.Value * 100m;
+
+        // Gerçek indirim varsa eşik kontrolü; yoksa Cimri'nin kendi değerine bak
+        if (realDiscount.HasValue)
+            return realDiscount.Value >= Math.Max(minDiscountPercent, 5m);
+
+        // Gerçek piyasa verisi yoksa Cimri'nin indirim değerine bak
+        if (product.DiscountPercent >= minDiscountPercent)
+            return true;
 
         return false;
     }
@@ -159,129 +155,103 @@ public class CimriTelegramProductCardSender : ICimriTelegramProductCardSender, I
 
     private static string PickBestMerchantUrl(CimriProduct product)
     {
-        var ordered = product.Offers
-            .OrderBy(o => o.Price)
-            .GroupBy(o => o.MerchantId)
-            .Select(g => g.First())
-            .FirstOrDefault();
+        var cheapest = product.Offers.OrderBy(o => o.Price).FirstOrDefault();
+        if (cheapest == null) return product.ProductUrl;
 
-        if (ordered == null)
-        {
-            return product.ProductUrl;
-        }
+        // Sadece mağazanın kendi doğrudan URL'si — Cimri redirect'i asla kullanma
+        if (!string.IsNullOrWhiteSpace(cheapest.MerchantProductUrl))
+            return cheapest.MerchantProductUrl.Trim();
 
-        if (!string.IsNullOrWhiteSpace(ordered.MerchantProductUrl))
-        {
-            return ordered.MerchantProductUrl.Trim();
-        }
-
-        if (!string.IsNullOrWhiteSpace(ordered.OfferUrl))
-        {
-            return ordered.OfferUrl.Trim();
-        }
-
+        // Doğrudan URL yoksa Cimri ürün sayfası (kullanıcı tüm teklifleri görür)
         return product.ProductUrl;
     }
 
-    private string BuildCaptionHtml(CimriProduct product, Dictionary<Guid, string> merchantsById)
+    private static bool IsMerchantDirectUrl(string url) =>
+        !url.Contains("cimri.com", StringComparison.OrdinalIgnoreCase);
+
+    private string BuildCaptionHtml(CimriProduct product, Dictionary<Guid, string> merchantsById, string triggerType = "new")
     {
         var offers = product.Offers.OrderBy(o => o.Price).ToList();
         var lowest = offers[0].Price;
         var currency = string.IsNullOrWhiteSpace(offers[0].Currency) ? "TRY" : offers[0].Currency.Trim();
 
-        decimal? avg = null;
+        // Piyasa fiyatı: çoklu teklif varsa en yüksek, yoksa Cimri'nin üstü çizili fiyatı
+        decimal? marketPrice = null;
         if (offers.Count >= 2)
         {
-            avg = offers.Average(o => o.Price);
+            var maxOffer = offers.Max(o => o.Price);
+            if (maxOffer > lowest)
+                marketPrice = maxOffer;
         }
+        if (!marketPrice.HasValue && product.PreviousPriceAmount is > 0 && product.PreviousPriceAmount > lowest)
+            marketPrice = product.PreviousPriceAmount.Value;
 
-        decimal? bestPriceFrom = null;
-        if (product.PreviousPriceAmount is > 0 && product.PreviousPriceAmount > lowest)
-        {
-            bestPriceFrom = product.PreviousPriceAmount.Value;
-        }
-        else if (product.DiscountPercent is > 0 and < 100)
-        {
-            var computed = lowest / (1m - product.DiscountPercent.Value / 100m);
-            if (computed > lowest)
-            {
-                bestPriceFrom = computed;
-            }
-        }
-        else if (offers.Count >= 2)
-        {
-            var maxPrice = offers.Max(o => o.Price);
-            if (maxPrice > lowest)
-            {
-                bestPriceFrom = maxPrice;
-            }
-        }
-
-        var merchantLabel = product.BestPriceMerchantName?.Trim();
-        if (string.IsNullOrWhiteSpace(merchantLabel) && offers.Count > 0)
-        {
-            merchantsById.TryGetValue(offers[0].MerchantId, out var name);
-            merchantLabel = name ?? offers[0].OfferTitle ?? offers[0].SellerName;
-        }
-
-        // İndirim yüzdesi: API'den veya eski/yeni fiyattan hesapla
         decimal? discountPct = null;
-        if (product.DiscountPercent is > 0 and < 100)
-        {
-            discountPct = Math.Round(product.DiscountPercent.Value);
-        }
-        else if (bestPriceFrom.HasValue && bestPriceFrom.Value > 0 && Math.Abs(bestPriceFrom.Value - lowest) >= 0.01m)
-        {
-            discountPct = Math.Round((bestPriceFrom.Value - lowest) / bestPriceFrom.Value * 100m);
-        }
+        if (marketPrice.HasValue && marketPrice.Value > 0)
+            discountPct = Math.Round((marketPrice.Value - lowest) / marketPrice.Value * 100m);
+
+        merchantsById.TryGetValue(offers[0].MerchantId, out var merchantLabel);
+        merchantLabel ??= offers[0].SellerName?.Trim()
+                       ?? offers[0].OfferTitle?.Trim()
+                       ?? product.BestPriceMerchantName?.Trim();
+
+        var url = PickBestMerchantUrl(product);
 
         var sb = new StringBuilder();
 
-        // ── Başlık satırı (ekrandaki brand header'ı yansıtır) ──────────────────
-        sb.AppendLine("🐝 <b>Bee BAK Sana</b> — Fırsatlar");
+        // ── Başlık (spec: minimal emoji, clickbait yasak) ──────────────────────
+        var header = triggerType switch
+        {
+            "price_drop"  => "💸 Fiyat düştü",
+            "discount_up" => "📉 İndirim arttı",
+            _ when discountPct >= 40 => "🔥 Fiyat ciddi seviyeye geriledi",
+            _ when discountPct >= 20 => "🛒 Fiyat avantajı var",
+            _             => "🐝 BeeBak Sana — Fırsat",
+        };
+        sb.AppendLine($"<b>{EscapeHtml(header)}</b>");
         sb.AppendLine();
 
-        // ── İndirim rozeti (ekrandaki slot__disc badge'i yansıtır) ───────────
-        if (discountPct.HasValue && discountPct.Value > 0)
+        // ── Ürün adı ──────────────────────────────────────────────────────────
+        sb.AppendLine($"<b>{EscapeHtml(product.Title.Trim())}</b>");
+        sb.AppendLine();
+
+        // ── Fiyat karşılaştırması ─────────────────────────────────────────────
+        if (marketPrice.HasValue)
         {
-            sb.Append("🏷 <b>−").Append((int)discountPct.Value).AppendLine("% İndirim</b>");
+            sb.AppendLine($"Türkiye piyasa ortalaması:");
+            sb.AppendLine($"<s>{EscapeHtml(FormatMoney(marketPrice.Value, currency))}</s>");
             sb.AppendLine();
         }
 
-        // ── Ürün başlığı (ekrandaki slot__product-title'ı yansıtır) ──────────
-        sb.Append("<b>").Append(EscapeHtml(product.Title.Trim())).AppendLine("</b>");
+        sb.AppendLine($"💸 Anlık fiyat:");
+        sb.AppendLine($"<b>{EscapeHtml(FormatMoney(lowest, currency))}</b>");
+
+        if (discountPct is > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"📉 Yaklaşık %{(int)discountPct.Value} daha uygun");
+        }
+
         sb.AppendLine();
 
-        // ── Fiyat chip'leri (ekrandaki slot__chip--avg ve slot__chip--min) ───
-        sb.AppendLine("━━━━━━━━━━━━━━━━━━━");
-        if (avg.HasValue)
-        {
-            sb.Append("📊 <i>Ortalama Fiyat</i>  ");
-            sb.AppendLine(EscapeHtml(FormatMoney(avg.Value, currency)));
-        }
-
-        // En uygun fiyat + fiyat düşüşü oku (chip--min ile chip__chip-drop)
-        sb.Append("💚 <b>En Uygun: ").Append(EscapeHtml(FormatMoney(lowest, currency))).AppendLine("</b>");
-        if (bestPriceFrom.HasValue && Math.Abs(bestPriceFrom.Value - lowest) >= 0.01m)
-        {
-            sb.Append("   <s>").Append(EscapeHtml(FormatMoney(bestPriceFrom.Value, currency))).Append("</s>")
-              .Append(" ➜ <b>").Append(EscapeHtml(FormatMoney(lowest, currency))).AppendLine("</b>");
-        }
-
-        sb.AppendLine("━━━━━━━━━━━━━━━━━━━");
-
-        // ── Mağaza (ekrandaki slot__merchant-line'ı yansıtır) ────────────────
+        // ── Mağaza + CTA ──────────────────────────────────────────────────────
         if (!string.IsNullOrWhiteSpace(merchantLabel))
         {
-            sb.Append("🏪 ").AppendLine(EscapeHtml(merchantLabel.Trim()));
+            sb.AppendLine($"🛒 Satıcı:");
+            sb.AppendLine($"{EscapeHtml(merchantLabel.Trim())}");
             sb.AppendLine();
         }
 
-        // ── CTA linki (ekrandaki share-card__best-link'i yansıtır) ──────────
-        var url = PickBestMerchantUrl(product);
-        sb.Append("👉 <a href=\"").Append(EscapeAttr(url)).Append("\">En uygun teklife git →</a>");
+        if (IsMerchantDirectUrl(url))
+            sb.Append($"🔗 <a href=\"{EscapeAttr(url)}\">Ürüne Git</a>");
+        else
+            sb.Append($"🔗 <a href=\"{EscapeAttr(url)}\">Tüm teklifleri gör</a>");
 
-        return sb.ToString();
+        sb.AppendLine();
+        sb.AppendLine();
+        sb.Append("<i>⏳ Stok ve fiyat kısa sürede değişebilir.</i>");
+
+        return sb.ToString().TrimEnd();
     }
 
     private static string EscapeHtml(string s)
@@ -326,21 +296,15 @@ public class CimriTelegramProductCardSender : ICimriTelegramProductCardSender, I
             var lowest = offers[0].Price;
             var currency = string.IsNullOrWhiteSpace(offers[0].Currency) ? "TRY" : offers[0].Currency.Trim();
 
-            decimal? avg = offers.Count >= 2 ? offers.Average(o => o.Price) : null;
-
-            decimal? bestPriceFrom = null;
-            if (product.PreviousPriceAmount is > 0 && product.PreviousPriceAmount > lowest)
-                bestPriceFrom = product.PreviousPriceAmount.Value;
-            else if (product.DiscountPercent is > 0 and < 100)
+            // Piyasa Fiyatı = en yüksek teklif fiyatı (kart görseli için referans fiyat)
+            decimal? marketPrice = null;
+            if (offers.Count >= 2)
             {
-                var computed = lowest / (1m - product.DiscountPercent.Value / 100m);
-                if (computed > lowest) bestPriceFrom = computed;
+                var maxOffer = offers.Max(o => o.Price);
+                if (maxOffer > lowest) marketPrice = maxOffer;
             }
-            else if (offers.Count >= 2)
-            {
-                var maxP = offers.Max(o => o.Price);
-                if (maxP > lowest) bestPriceFrom = maxP;
-            }
+            if (!marketPrice.HasValue && product.PreviousPriceAmount is > 0 && product.PreviousPriceAmount > lowest)
+                marketPrice = product.PreviousPriceAmount.Value;
 
             merchantsById.TryGetValue(offers[0].MerchantId, out var merchantName);
             merchantName ??= product.BestPriceMerchantName?.Trim()
@@ -348,10 +312,8 @@ public class CimriTelegramProductCardSender : ICimriTelegramProductCardSender, I
                           ?? offers[0].SellerName;
 
             decimal? discountPct = null;
-            if (product.DiscountPercent is > 0 and < 100)
-                discountPct = Math.Round(product.DiscountPercent.Value);
-            else if (bestPriceFrom.HasValue && bestPriceFrom.Value > 0)
-                discountPct = Math.Round((bestPriceFrom.Value - lowest) / bestPriceFrom.Value * 100m);
+            if (marketPrice.HasValue && marketPrice.Value > 0)
+                discountPct = Math.Round((marketPrice.Value - lowest) / marketPrice.Value * 100m);
 
             // Temayı contentId hash'inden seç (her ürün tutarlı ama farklı renkte)
             var themeIndex = Math.Abs(product.ContentId.GetHashCode()) % 4;
@@ -359,7 +321,7 @@ public class CimriTelegramProductCardSender : ICimriTelegramProductCardSender, I
             var cardBytes = await CimriCardImageGenerator.GenerateAsync(
                 product.Title?.Trim() ?? "",
                 product.PrimaryImageUrl?.Trim(),
-                lowest, avg, bestPriceFrom, currency,
+                lowest, null, marketPrice, currency,
                 merchantName?.Trim(),
                 discountPct,
                 themeIndex,

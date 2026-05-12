@@ -174,6 +174,19 @@ public class AkakceListingSyncAppService : ApplicationService, IAkakceListingSyn
         return MapToStatus(run, events, listingMeta.url, listingMeta.source);
     }
 
+    public virtual async Task<AkakceListingSyncStatusDto?> GetLatestAsync()
+    {
+        var queryable = await _scrapeRunRepository.GetQueryableAsync();
+        var run = queryable
+            .Where(r => r.Marketplace == MarketplaceKind.Akakce)
+            .OrderByDescending(r => r.StartedUtc)
+            .FirstOrDefault();
+        if (run == null) return null;
+        var events = await LoadEventsAsync(run.Id, null);
+        var listingMeta = await GetListingTargetMetaAsync(run.Id);
+        return MapToStatus(run, events, listingMeta.url, listingMeta.source);
+    }
+
     public virtual async Task<AkakceListingSyncStatusDto> CancelAsync(Guid scrapeRunId)
     {
         var run = await _scrapeRunRepository.FindAsync(scrapeRunId)

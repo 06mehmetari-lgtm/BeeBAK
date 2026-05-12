@@ -83,8 +83,9 @@ public class CimriProductDetailJob : AsyncBackgroundJob<CimriProductDetailJobArg
         }
 
         var lockKey = $"cimri:lock:{args.ContentId}";
+        // TimeSpan.Zero = sadece bir kez dene, bekleme: aynı contentId zaten işleniyorsa atla
         var handle = _lockProvider != null
-            ? await _lockProvider.TryAcquireLockAsync(lockKey, TimeSpan.FromSeconds(30))
+            ? await _lockProvider.TryAcquireLockAsync(lockKey, TimeSpan.Zero)
             : null;
 
         if (_lockProvider != null && handle == null)
@@ -93,6 +94,8 @@ public class CimriProductDetailJob : AsyncBackgroundJob<CimriProductDetailJobArg
             await _eventLogger.LogAsync(
                 args.ScrapeRunId, EcScrapeRunEventLevel.Info, "detail",
                 "Başka bir worker işliyor, atlanıyor.", title: args.Title, url: args.ProductUrl);
+            await IncrementProcessedAsync(args.ScrapeRunId);
+            await TryFinalizeRunAsync(args.ScrapeRunId);
             return;
         }
 
@@ -160,8 +163,6 @@ public class CimriProductDetailJob : AsyncBackgroundJob<CimriProductDetailJobArg
 
     private async Task<CimriIngestionResult> ProcessAsync(CimriProductDetailJobArgs args)
     {
-        using var uow = _unitOfWorkManager.Begin(requiresNew: true);
-
         var card = new CimriListingCard
         {
             ContentId = args.ContentId,
@@ -177,18 +178,43 @@ public class CimriProductDetailJob : AsyncBackgroundJob<CimriProductDetailJobArg
         };
 
         var policy = CimriRetailOfferPolicyResolver.Resolve(_options.CurrentValue, args.RetailOfferPolicy);
-        var result = await _ingestionService.UpsertAsync(
-            card,
-            args.IncludeOffers,
-            args.ExpandAllOffers,
-            policy);
-        await uow.CompleteAsync();
 
-        _ownLogger.LogInformation(
-            "Cimri product detail done: {ContentId} (productId={ProductId}, offers={Offers}, merchants={Merchants})",
-            args.ContentId, result.ProductId, result.OffersAdded, result.TouchedMerchantIds.Count);
+        for (var attempt = 1; attempt <= 2; attempt++)
+        {
+            try
+            {
+                using var uow = _unitOfWorkManager.Begin(requiresNew: true);
+                var result = await _ingestionService.UpsertAsync(card, args.IncludeOffers, args.ExpandAllOffers, policy);
+                await uow.CompleteAsync();
 
-        return result;
+                _ownLogger.LogInformation(
+                    "Cimri product detail done: {ContentId} (productId={ProductId}, offers={Offers}, merchants={Merchants})",
+                    args.ContentId, result.ProductId, result.OffersAdded, result.TouchedMerchantIds.Count);
+
+                return result;
+            }
+            catch (Exception ex) when (attempt == 1 && IsDuplicateKeyException(ex))
+            {
+                // Worker restart sonrası başka bir job bu ürünü zaten ekledi.
+                // UoW'u at, yeni UoW ile tekrar dene — bu sefer Find mevcut kaydı bulur.
+                _ownLogger.LogDebug("Cimri duplicate key, retrying as update: {ContentId}", args.ContentId);
+            }
+        }
+
+        throw new InvalidOperationException("Cimri ProcessAsync retry exhausted — should not reach here");
+    }
+
+    private static bool IsDuplicateKeyException(Exception ex)
+    {
+        for (var current = ex; current != null; current = current.InnerException)
+        {
+            var msg = current.Message;
+            if (msg.Contains("23505", StringComparison.Ordinal) ||
+                msg.Contains("duplicate key", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("IX_AppCimriProducts", StringComparison.Ordinal))
+                return true;
+        }
+        return false;
     }
 
     private async Task<bool> IsCancelledAsync(Guid scrapeRunId)
