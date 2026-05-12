@@ -1,11 +1,10 @@
 using System;
-using System.Text;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using BeeBAK.Ecommerce;
 using BeeBAK.Marketplaces.Cimri.Jobs;
 using BeeBAK.Marketplaces.Cimri.Logging;
 using Medallion.Threading;
-using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -19,11 +18,18 @@ using Volo.Abp.Uow;
 
 namespace BeeBAK.Marketplaces.Cimri;
 
+/// <summary>
+/// Robot 1 — Cimri tarama motoru.
+/// Her tur tüm yapılandırılmış kategori URL'lerini AYNI ANDA kuyruğa alır.
+/// Önceki tur henüz bitmemişse (aktif run varsa) bu tur atlanır.
+/// </summary>
 public class CimriAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
 {
-    private const string MutexKey        = "cimri:autosync:mutex";
-    private const string CategoryIdxKey  = "beebak:cimri:autosync:catidx";
-    private static readonly TimeSpan StuckRunThreshold = TimeSpan.FromMinutes(45);
+    private const string MutexKey = "cimri:autosync:mutex";
+
+    // Takılı run eşiği: bir listing discovery + 1000 ürün detay işi en fazla 90 dk sürebilir
+    private static readonly TimeSpan StuckRunThreshold  = TimeSpan.FromMinutes(90);
+    private static readonly TimeSpan ActiveRunThreshold = TimeSpan.FromMinutes(90);
 
     public CimriAutoSyncWorker(
         AbpAsyncTimer timer,
@@ -33,7 +39,7 @@ public class CimriAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
     {
         var autoSync = options.Value.AutoSync;
 
-        // Kategori listesi varsa daha kısa interval; yoksa saatlik döngü.
+        // Kategori listesi varsa CategoryIntervalMinutes, yoksa IntervalHours
         if (autoSync.CategoryUrls.Count > 0 && autoSync.CategoryIntervalMinutes > 0)
             Timer.Period = (int)TimeSpan.FromMinutes(autoSync.CategoryIntervalMinutes).TotalMilliseconds;
         else
@@ -52,6 +58,7 @@ public class CimriAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
 
         var logger = sp.GetRequiredService<ILogger<CimriAutoSyncWorker>>();
 
+        // Distributed lock — tek replica bu turu yönetir
         var lockProvider = sp.GetService<IDistributedLockProvider>();
         IAsyncDisposable? mutexHandle = null;
         if (lockProvider != null)
@@ -96,7 +103,7 @@ public class CimriAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
 
             foreach (var stuck in stuckRuns)
             {
-                stuck.Fail(clock.Now, "self-heal: 45 dakikadan uzun Running kaldı");
+                stuck.Fail(clock.Now, "self-heal: 90 dakikadan uzun Running kaldı");
                 await scrapeRunRepo.UpdateAsync(stuck, autoSave: true);
                 logger.LogWarning(
                     "CimriAutoSync: takılı run self-heal ile Failed yapıldı (runId={RunId}, başladı={Started:HH:mm} UTC).",
@@ -107,11 +114,11 @@ public class CimriAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
         }
         catch (Exception ex) { logger.LogWarning(ex, "CimriAutoSync: self-heal başarısız, devam ediliyor."); }
 
-        // Aktif tarama var mı?
+        // Aktif tarama var mı? Varsa bu turu atla (tüm URL'ler bitince yeniden başla)
         try
         {
             using var uow = uowManager.Begin(requiresNew: true);
-            var recentCutoff = DateTime.UtcNow - StuckRunThreshold;
+            var recentCutoff = DateTime.UtcNow - ActiveRunThreshold;
             var activeRuns = await scrapeRunRepo.GetListAsync(r =>
                 r.Marketplace == MarketplaceKind.Cimri &&
                 r.Status == EcScrapeRunStatus.Running &&
@@ -121,15 +128,14 @@ public class CimriAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
             if (activeRuns.Count > 0)
             {
                 logger.LogInformation(
-                    "CimriAutoSync: aktif tarama devam ediyor (runId={RunId}) — bu tur atlanıyor.", activeRuns[0].Id);
+                    "CimriAutoSync: {Count} aktif tarama devam ediyor — bu tur atlanıyor.", activeRuns.Count);
                 return;
             }
         }
         catch (Exception ex) { logger.LogWarning(ex, "CimriAutoSync: aktif tarama kontrolü başarısız, yine de devam ediliyor."); }
 
-        // Kategori URL seç (round-robin) veya varsayılan URL kullan
-        var listingUrl = await ResolveNextListingUrlAsync(sp, options, logger);
-
+        // Taranacak tüm URL'leri al
+        var allUrls = GetAllListingUrls(options);
         var maxPages    = Math.Max(1, options.AutoSync.MaxPages);
         var maxProducts = Math.Max(1, options.AutoSync.MaxProducts);
 
@@ -137,6 +143,31 @@ public class CimriAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
         var jobManager    = sp.GetRequiredService<IBackgroundJobManager>();
         var eventLogger   = sp.GetRequiredService<IScrapeRunEventLogger>();
 
+        logger.LogInformation(
+            "CimriAutoSync: {Count} URL aynı anda kuyruğa alınıyor (maxPages={P}, maxProducts={Prod}).",
+            allUrls.Count, maxPages, maxProducts);
+
+        // Her URL için ayrı scrape run + job kuyruğa al
+        foreach (var url in allUrls)
+        {
+            await EnqueueUrlAsync(sp, url, maxPages, maxProducts,
+                scrapeRunRepo, uowManager, clock, guidGenerator, jobManager, eventLogger, logger);
+        }
+    }
+
+    private static async Task EnqueueUrlAsync(
+        IServiceProvider sp,
+        string url,
+        int maxPages,
+        int maxProducts,
+        IRepository<EcScrapeRun, Guid> scrapeRunRepo,
+        IUnitOfWorkManager uowManager,
+        IClock clock,
+        IGuidGenerator guidGenerator,
+        IBackgroundJobManager jobManager,
+        IScrapeRunEventLogger eventLogger,
+        ILogger<CimriAutoSyncWorker> logger)
+    {
         EcScrapeRun scrapeRun;
         try
         {
@@ -152,7 +183,7 @@ public class CimriAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "CimriAutoSync: tarama kaydı oluşturulamadı — bir sonraki aralıkta tekrar denecek.");
+            logger.LogError(ex, "CimriAutoSync: tarama kaydı oluşturulamadı (url={Url}).", url);
             return;
         }
 
@@ -160,82 +191,47 @@ public class CimriAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
         {
             await eventLogger.LogAsync(
                 scrapeRun.Id, EcScrapeRunEventLevel.Info, "auto-sync",
-                $"Otomatik tarama başlatıldı — {listingUrl} | {maxPages} sayfa | maks {maxProducts} ürün | {options.AutoSync.IntervalHours}h aralık.");
+                $"Otomatik tarama başlatıldı — {url} | {maxPages} sayfa | maks {maxProducts} ürün");
 
             await jobManager.EnqueueAsync(new CimriListingDiscoveryJobArgs
             {
-                ScrapeRunId    = scrapeRun.Id,
-                MaxPages       = maxPages,
-                MaxProducts    = maxProducts,
-                IncludeOffers  = true,
+                ScrapeRunId     = scrapeRun.Id,
+                MaxPages        = maxPages,
+                MaxProducts     = maxProducts,
+                IncludeOffers   = true,
                 ExpandAllOffers = true,
-                ForceRefresh   = false,
-                ListingPageUrl = listingUrl,
+                ForceRefresh    = false,
+                ListingPageUrl  = url,
             });
 
             logger.LogInformation(
-                "CimriAutoSync: tarama kuyruğa alındı (runId={RunId}, url={Url}, maxPages={P}, maxProducts={Prod})",
-                scrapeRun.Id, listingUrl, maxPages, maxProducts);
+                "CimriAutoSync: kuyruğa alındı (runId={RunId}, url={Url})", scrapeRun.Id, url);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "CimriAutoSync: kuyruğa atma başarısız (runId={RunId}) — bir sonraki aralıkta tekrar denecek.", scrapeRun.Id);
+            logger.LogError(ex, "CimriAutoSync: kuyruğa atma başarısız (runId={RunId}, url={Url}).", scrapeRun.Id, url);
             try
             {
                 using var uow = uowManager.Begin(requiresNew: true);
                 var run = await scrapeRunRepo.FindAsync(scrapeRun.Id);
-                if (run != null)
-                {
-                    run.Fail(clock.Now, ex.Message);
-                    await scrapeRunRepo.UpdateAsync(run, autoSave: true);
-                }
+                if (run != null) { run.Fail(clock.Now, ex.Message); await scrapeRunRepo.UpdateAsync(run, autoSave: true); }
                 await uow.CompleteAsync();
             }
             catch { /* best-effort */ }
         }
     }
 
-    private static async Task<string> ResolveNextListingUrlAsync(
-        IServiceProvider sp,
-        CimriClientOptions options,
-        ILogger<CimriAutoSyncWorker> logger)
+    private static List<string> GetAllListingUrls(CimriClientOptions options)
     {
-        var categories = options.AutoSync.CategoryUrls;
-        if (categories.Count == 0)
-        {
-            return !string.IsNullOrWhiteSpace(options.AutoSync.ListingPageUrl)
-                ? options.AutoSync.ListingPageUrl
-                : !string.IsNullOrWhiteSpace(options.ListingPageUrl)
-                    ? options.ListingPageUrl
-                    : "https://www.cimri.com/indirimli-urunler";
-        }
+        if (options.AutoSync.CategoryUrls.Count > 0)
+            return options.AutoSync.CategoryUrls;
 
-        var cache = sp.GetRequiredService<IDistributedCache>();
-        int currentIdx = 0;
-        try
-        {
-            var raw = await cache.GetAsync(CategoryIdxKey);
-            if (raw != null)
-                int.TryParse(Encoding.UTF8.GetString(raw), out currentIdx);
-        }
-        catch (Exception ex) { logger.LogWarning(ex, "CimriAutoSync: kategori index okunamadı, 0'dan başlanıyor."); }
+        var single = !string.IsNullOrWhiteSpace(options.AutoSync.ListingPageUrl)
+            ? options.AutoSync.ListingPageUrl
+            : !string.IsNullOrWhiteSpace(options.ListingPageUrl)
+                ? options.ListingPageUrl
+                : "https://www.cimri.com/indirimli-urunler";
 
-        var url = categories[currentIdx % categories.Count];
-        var nextIdx = currentIdx + 1;
-
-        try
-        {
-            await cache.SetAsync(
-                CategoryIdxKey,
-                Encoding.UTF8.GetBytes(nextIdx.ToString()),
-                new DistributedCacheEntryOptions { SlidingExpiration = TimeSpan.FromDays(7) });
-        }
-        catch (Exception ex) { logger.LogWarning(ex, "CimriAutoSync: kategori index kaydedilemedi."); }
-
-        logger.LogInformation(
-            "CimriAutoSync: kategori seçildi [{Idx}/{Total}] → {Url}",
-            currentIdx % categories.Count + 1, categories.Count, url);
-
-        return url;
+        return new List<string> { single };
     }
 }

@@ -1,11 +1,10 @@
 using System;
-using System.Text;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using BeeBAK.Ecommerce;
 using BeeBAK.Marketplaces.Akakce.Jobs;
 using BeeBAK.Marketplaces.Cimri.Logging;
 using Medallion.Threading;
-using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -19,11 +18,17 @@ using Volo.Abp.Uow;
 
 namespace BeeBAK.Marketplaces.Akakce;
 
+/// <summary>
+/// Robot 1 — Akakçe tarama motoru.
+/// Her tur tüm yapılandırılmış kategori URL'lerini AYNI ANDA kuyruğa alır.
+/// Önceki tur henüz bitmemişse (aktif run varsa) bu tur atlanır.
+/// </summary>
 public class AkakceAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
 {
-    private const string MutexKey       = "akakce:autosync:mutex";
-    private const string CategoryIdxKey = "beebak:akakce:autosync:catidx";
-    private static readonly TimeSpan StuckRunThreshold = TimeSpan.FromMinutes(45);
+    private const string MutexKey = "akakce:autosync:mutex";
+
+    private static readonly TimeSpan StuckRunThreshold  = TimeSpan.FromMinutes(90);
+    private static readonly TimeSpan ActiveRunThreshold = TimeSpan.FromMinutes(90);
 
     public AkakceAutoSyncWorker(
         AbpAsyncTimer timer,
@@ -92,7 +97,7 @@ public class AkakceAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
                 r.StartedUtc < stuckCutoff);
             foreach (var stuck in stuckRuns)
             {
-                stuck.Fail(clock.Now, "self-heal: 45 dakikadan uzun Running kaldı");
+                stuck.Fail(clock.Now, "self-heal: 90 dakikadan uzun Running kaldı");
                 await scrapeRunRepo.UpdateAsync(stuck, autoSave: true);
                 logger.LogWarning(
                     "AkakceAutoSync: takılı run self-heal ile Failed yapıldı (runId={RunId}, başladı={Started:HH:mm} UTC).",
@@ -102,34 +107,57 @@ public class AkakceAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
         }
         catch (Exception ex) { logger.LogWarning(ex, "AkakceAutoSync: self-heal başarısız, devam ediliyor."); }
 
-        // Aktif tarama var mı?
+        // Aktif tarama var mı? Varsa bu turu atla
         try
         {
             using var uow = uowManager.Begin(requiresNew: true);
-            var recentCutoff = DateTime.UtcNow - StuckRunThreshold;
+            var recentCutoff = DateTime.UtcNow - ActiveRunThreshold;
             var activeRuns = await scrapeRunRepo.GetListAsync(r =>
                 r.Marketplace == MarketplaceKind.Akakce &&
                 r.Status == EcScrapeRunStatus.Running &&
                 r.StartedUtc >= recentCutoff);
             await uow.CompleteAsync();
+
             if (activeRuns.Count > 0)
             {
                 logger.LogInformation(
-                    "AkakceAutoSync: aktif tarama devam ediyor (runId={RunId}) — bu tur atlanıyor.", activeRuns[0].Id);
+                    "AkakceAutoSync: {Count} aktif tarama devam ediyor — bu tur atlanıyor.", activeRuns.Count);
                 return;
             }
         }
         catch (Exception ex) { logger.LogWarning(ex, "AkakceAutoSync: aktif tarama kontrolü başarısız."); }
 
-        // Kategori URL seç (round-robin) veya varsayılan URL kullan
-        var listingUrl = await ResolveNextListingUrlAsync(sp, options, logger);
-
+        // Tüm URL'leri aynı anda kuyruğa al
+        var allUrls = GetAllListingUrls(options);
         var maxPages    = Math.Max(1, options.AutoSync.MaxPages);
         var maxProducts = Math.Max(1, options.AutoSync.MaxProducts);
 
         var guidGenerator = sp.GetRequiredService<IGuidGenerator>();
         var jobManager    = sp.GetRequiredService<IBackgroundJobManager>();
 
+        logger.LogInformation(
+            "AkakceAutoSync: {Count} URL aynı anda kuyruğa alınıyor (maxPages={P}, maxProducts={Prod}).",
+            allUrls.Count, maxPages, maxProducts);
+
+        foreach (var url in allUrls)
+        {
+            await EnqueueUrlAsync(sp, url, maxPages, maxProducts,
+                scrapeRunRepo, uowManager, clock, guidGenerator, jobManager, logger);
+        }
+    }
+
+    private static async Task EnqueueUrlAsync(
+        IServiceProvider sp,
+        string url,
+        int maxPages,
+        int maxProducts,
+        IRepository<EcScrapeRun, Guid> scrapeRunRepo,
+        IUnitOfWorkManager uowManager,
+        IClock clock,
+        IGuidGenerator guidGenerator,
+        IBackgroundJobManager jobManager,
+        ILogger<AkakceAutoSyncWorker> logger)
+    {
         EcScrapeRun scrapeRun;
         try
         {
@@ -145,7 +173,7 @@ public class AkakceAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "AkakceAutoSync: tarama kaydı oluşturulamadı.");
+            logger.LogError(ex, "AkakceAutoSync: tarama kaydı oluşturulamadı (url={Url}).", url);
             return;
         }
 
@@ -158,16 +186,15 @@ public class AkakceAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
                 MaxProducts    = maxProducts,
                 IncludeOffers  = true,
                 ForceRefresh   = false,
-                ListingPageUrl = listingUrl,
+                ListingPageUrl = url,
             });
 
             logger.LogInformation(
-                "AkakceAutoSync: tarama kuyruğa alındı (runId={RunId}, url={Url}, maxPages={P}, maxProducts={Prod})",
-                scrapeRun.Id, listingUrl, maxPages, maxProducts);
+                "AkakceAutoSync: kuyruğa alındı (runId={RunId}, url={Url})", scrapeRun.Id, url);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "AkakceAutoSync: kuyruğa atma başarısız (runId={RunId}).", scrapeRun.Id);
+            logger.LogError(ex, "AkakceAutoSync: kuyruğa atma başarısız (runId={RunId}, url={Url}).", scrapeRun.Id, url);
             try
             {
                 using var uow = uowManager.Begin(requiresNew: true);
@@ -179,45 +206,15 @@ public class AkakceAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
         }
     }
 
-    private static async Task<string> ResolveNextListingUrlAsync(
-        IServiceProvider sp,
-        AkakceClientOptions options,
-        ILogger<AkakceAutoSyncWorker> logger)
+    private static List<string> GetAllListingUrls(AkakceClientOptions options)
     {
-        var categories = options.AutoSync.CategoryUrls;
-        if (categories.Count == 0)
-        {
-            return !string.IsNullOrWhiteSpace(options.AutoSync.ListingPageUrl)
-                ? options.AutoSync.ListingPageUrl
-                : options.ListingPageUrl ?? "https://www.akakce.com/fiyati-dusen-urunler/?s=5";
-        }
+        if (options.AutoSync.CategoryUrls.Count > 0)
+            return options.AutoSync.CategoryUrls;
 
-        var cache = sp.GetRequiredService<IDistributedCache>();
-        int currentIdx = 0;
-        try
-        {
-            var raw = await cache.GetAsync(CategoryIdxKey);
-            if (raw != null)
-                int.TryParse(Encoding.UTF8.GetString(raw), out currentIdx);
-        }
-        catch (Exception ex) { logger.LogWarning(ex, "AkakceAutoSync: kategori index okunamadı, 0'dan başlanıyor."); }
+        var single = !string.IsNullOrWhiteSpace(options.AutoSync.ListingPageUrl)
+            ? options.AutoSync.ListingPageUrl
+            : options.ListingPageUrl ?? "https://www.akakce.com/fiyati-dusen-urunler/?s=5";
 
-        var url = categories[currentIdx % categories.Count];
-        var nextIdx = currentIdx + 1;
-
-        try
-        {
-            await cache.SetAsync(
-                CategoryIdxKey,
-                Encoding.UTF8.GetBytes(nextIdx.ToString()),
-                new DistributedCacheEntryOptions { SlidingExpiration = TimeSpan.FromDays(7) });
-        }
-        catch (Exception ex) { logger.LogWarning(ex, "AkakceAutoSync: kategori index kaydedilemedi."); }
-
-        logger.LogInformation(
-            "AkakceAutoSync: kategori seçildi [{Idx}/{Total}] → {Url}",
-            currentIdx % categories.Count + 1, categories.Count, url);
-
-        return url;
+        return new List<string> { single };
     }
 }
