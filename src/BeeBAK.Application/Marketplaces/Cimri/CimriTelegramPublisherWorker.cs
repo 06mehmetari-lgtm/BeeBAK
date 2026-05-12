@@ -97,8 +97,11 @@ public class CimriTelegramPublisherWorker : AsyncPeriodicBackgroundWorkerBase
             }
         }
 
-        // ── 3. Kuyruğun tepesinden aday al ──────────────────────────────
-        var entry = await queue.DequeueTopAsync();
+        // ── 3. Son gönderilen mağazayı oku, farklı mağazayı tercih et ────
+        var lastMerchant = await cache.GetStringAsync(LastMerchantKey);
+
+        // ── 4. Kuyruğun tepesinden aday al (son mağazadan kaçın) ─────────
+        var entry = await queue.DequeueTopAsync(avoidMerchant: lastMerchant);
         if (entry == null) return;
 
         // Sessiz saatte sadece yüksek öncelikli ürünleri gönder
@@ -152,6 +155,18 @@ public class CimriTelegramPublisherWorker : AsyncPeriodicBackgroundWorkerBase
                 {
                     AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(24),
                 });
+
+            // Son gönderilen mağazayı kaydet (bir sonraki gönderimde farklı mağaza seçilsin)
+            if (!string.IsNullOrEmpty(entry.MerchantName))
+            {
+                await cache.SetStringAsync(
+                    LastMerchantKey,
+                    entry.MerchantName,
+                    new DistributedCacheEntryOptions
+                    {
+                        AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(6),
+                    });
+            }
 
             // ── 8. Canlı izleme geçmişine kaydet ─────────────────────────
             try

@@ -49,7 +49,10 @@ public class CimriTelegramPublishQueue : ITransientDependency
     }
 
     // ── En yüksek skorlu ürünü al ve kuyruktan çıkar ──────────────────────
-    public async Task<CimriPublishQueueEntry?> DequeueTopAsync(CancellationToken ct = default)
+    /// <param name="avoidMerchant">Bu mağaza adından farklı bir ürün tercih edilir.
+    /// Kuyrukta sadece bu mağazadan ürün varsa yine de o alınır (zorunlu fallback).</param>
+    public async Task<CimriPublishQueueEntry?> DequeueTopAsync(
+        string? avoidMerchant = null, CancellationToken ct = default)
     {
         CimriPublishQueueEntry? top = null;
 
@@ -58,7 +61,21 @@ public class CimriTelegramPublishQueue : ITransientDependency
             var list = await ReadAsync(ct);
             if (list.Count == 0) return;
 
-            top = list.OrderByDescending(e => e.Score).First();
+            var sorted = list.OrderByDescending(e => e.Score).ToList();
+
+            if (!string.IsNullOrEmpty(avoidMerchant) && sorted.Count > 1)
+            {
+                // Farklı mağazadan en yüksek skorlu ürünü tercih et
+                top = sorted.FirstOrDefault(e =>
+                    !string.Equals(e.MerchantName, avoidMerchant,
+                        StringComparison.OrdinalIgnoreCase))
+                    ?? sorted[0]; // Tüm kuyruk aynı mağazaysa en üstü al
+            }
+            else
+            {
+                top = sorted[0];
+            }
+
             list.Remove(top);
             await WriteAsync(list, ct);
         }, ct);

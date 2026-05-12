@@ -194,14 +194,22 @@ public class CimriProductIngestionService : DomainService
 
                     var score = CimriProductScorer.Calculate(currentDiscount, triggerType);
 
+                    // En ucuz teklifin mağaza adı (mağaza çeşitliliği için)
+                    var cheapestMerchant = filteredOffers
+                        .OrderBy(o => o.Price)
+                        .FirstOrDefault()?.MerchantName?.Trim()
+                        ?? card.BestMerchantName?.Trim()
+                        ?? "";
+
                     await _publishQueue.EnqueueAsync(new CimriPublishQueueEntry
                     {
-                        ContentId      = card.ContentId,
-                        TriggerType    = triggerType,
-                        Score          = score,
-                        LowestPrice    = currentPrice,
-                        PreviousPrice  = prevBestPrice,
+                        ContentId       = card.ContentId,
+                        TriggerType     = triggerType,
+                        Score           = score,
+                        LowestPrice     = currentPrice,
+                        PreviousPrice   = prevBestPrice,
                         DiscountPercent = currentDiscount,
+                        MerchantName    = cheapestMerchant,
                     }, cancellationToken);
                 }
             }

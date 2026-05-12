@@ -10,5 +10,9 @@ public class AkakcePublishQueueEntry
     public decimal LowestPrice { get; set; }
     public decimal? PreviousPrice { get; set; }
     public decimal? DiscountPercent { get; set; }
+
+    /// <summary>En ucuz teklifin mağaza adı — çeşitlilik kontrolü için</summary>
+    public string MerchantName { get; set; } = "";
+
     public long EnqueuedAtUnix { get; set; } = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 }
