@@ -148,6 +148,12 @@ public class AkakceProductIngestionService : DomainService
                     var triggerType = DetermineTriggerType(currentPrice, currentDiscount, prevBestPrice, prevDiscountPct, existing == null);
                     var score = ComputeScore(currentDiscount, triggerType);
 
+                    // En ucuz teklifin mağaza adı (mağaza çeşitliliği için)
+                    var cheapestMerchant = detail.Offers
+                        .OrderBy(o => o.Price)
+                        .FirstOrDefault()?.MerchantName?.Trim()
+                        ?? "";
+
                     await _publishQueue.EnqueueAsync(new AkakcePublishQueueEntry
                     {
                         ProductCode     = card.ProductCode,
@@ -156,6 +162,7 @@ public class AkakceProductIngestionService : DomainService
                         LowestPrice     = currentPrice,
                         PreviousPrice   = prevBestPrice,
                         DiscountPercent = currentDiscount,
+                        MerchantName    = cheapestMerchant,
                     }, cancellationToken);
                 }
             }
