@@ -138,6 +138,10 @@ public class CimriClientOptions
     public CimriTelegramNotificationOptions Telegram { get; set; } = new();
 
     public CimriAutoSyncOptions AutoSync { get; set; } = new();
+
+    public CimriPriceWatchOptions PriceWatch { get; set; } = new();
+
+    public CimriPublishOptions Publish { get; set; } = new();
 }
 
 public class CimriAutoSyncOptions
@@ -145,8 +149,11 @@ public class CimriAutoSyncOptions
     /// <summary>Worker 3 saatte bir otomatik tarama yapar.</summary>
     public bool Enabled { get; set; } = false;
 
-    /// <summary>Tarama tekrarı saat cinsinden (varsayılan 3).</summary>
+    /// <summary>Tarama tekrarı saat cinsinden (varsayılan 3). CategoryUrls varsa CategoryIntervalMinutes kullanılır.</summary>
     public int IntervalHours { get; set; } = 3;
+
+    /// <summary>Kategori listesi yapılandırıldığında timer periyodu (dk). 0 = IntervalHours'a düşer.</summary>
+    public int CategoryIntervalMinutes { get; set; } = 30;
 
     /// <summary>Worker başladığında ilk taramayı beklemeden hemen başlat.</summary>
     public bool RunOnStart { get; set; } = false;
@@ -154,11 +161,56 @@ public class CimriAutoSyncOptions
     /// <summary>Taranacak tam URL (boşsa CimriClientOptions.ListingPageUrl kullanılır).</summary>
     public string? ListingPageUrl { get; set; }
 
+    /// <summary>
+    /// Kategori URL listesi. Dolu ise her tur bir sonraki URL seçilir (Redis sayacıyla round-robin).
+    /// Boşsa ListingPageUrl / CimriClientOptions.ListingPageUrl kullanılır.
+    /// </summary>
+    public List<string> CategoryUrls { get; set; } = new();
+
     /// <summary>Tarama başına maksimum sayfa sayısı.</summary>
     public int MaxPages { get; set; } = 15;
 
     /// <summary>Tarama başına maksimum ürün sayısı (sayfada 200–1000 arası değişebilir).</summary>
     public int MaxProducts { get; set; } = 1000;
+}
+
+public class CimriPriceWatchOptions
+{
+    /// <summary>Son N günde eklenen ürünlerin fiyatını yeniden kontrol et.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Kaç saatte bir fiyat kontrolü yapılacağı.</summary>
+    public int IntervalMinutes { get; set; } = 120;
+
+    /// <summary>Worker başladığında hemen ilk kontrolü başlat.</summary>
+    public bool RunOnStart { get; set; } = false;
+
+    /// <summary>En fazla kaç günlük ürün taransın.</summary>
+    public int ProductAgeDays { get; set; } = 2;
+
+    /// <summary>Son taramadan bu kadar dk geçmemişse ürünü atla (dedup koruması).</summary>
+    public int ResyncAfterMinutes { get; set; } = 90;
+
+    /// <summary>Bir tur'da en fazla kaç ürün kuyruğa atılır.</summary>
+    public int MaxProductsPerRun { get; set; } = 200;
+}
+
+public class CimriPublishOptions
+{
+    /// <summary>Telegram kuyruğundan gönderimler için minimum bekleme (dk).</summary>
+    public int MinDelayMinutes { get; set; } = 5;
+
+    /// <summary>Telegram kuyruğundan gönderimler için maksimum bekleme (dk).</summary>
+    public int MaxDelayMinutes { get; set; } = 15;
+
+    /// <summary>Bu indirim yüzdesinin altındaki ürünler kuyruğa alınmaz.</summary>
+    public decimal MinDiscountPercent { get; set; } = 25m;
+
+    /// <summary>Sessiz saat başlangıcı (İstanbul, dahil). Örn. 2 = 02:00.</summary>
+    public int QuietStartHour { get; set; } = 2;
+
+    /// <summary>Sessiz saat bitişi (İstanbul, hariç). Örn. 8 = 08:00.</summary>
+    public int QuietEndHour { get; set; } = 8;
 }
 
 public class CimriTelegramNotificationOptions

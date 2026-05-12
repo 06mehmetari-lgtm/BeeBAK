@@ -47,6 +47,12 @@ export class AkakceSyncService {
     );
   }
 
+  getLatest(): Observable<AkakceListingSyncStatusDto | null> {
+    return this.http.get<AkakceListingSyncStatusDto | null>(
+      `${this.root}/api/app/akakce-listing-sync/latest`,
+    );
+  }
+
   clearAllStoredData(): Observable<void> {
     return this.http.post<void>(
       `${this.root}/api/app/akakce-product/clear-all-stored-data`,

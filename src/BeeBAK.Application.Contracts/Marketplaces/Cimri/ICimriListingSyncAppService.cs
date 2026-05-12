@@ -11,4 +11,6 @@ public interface ICimriListingSyncAppService : IApplicationService
     Task<CimriListingSyncStatusDto> GetStatusAsync(Guid scrapeRunId, DateTime? sinceUtc = null);
 
     Task<CimriListingSyncStatusDto> CancelAsync(Guid scrapeRunId);
+
+    Task<CimriListingSyncStatusDto?> GetLatestAsync();
 }

@@ -1,0 +1,447 @@
+/* =========================================================
+   Live Monitor — Premium Dark Dashboard
+   ========================================================= */
+
+$bg-base:    #0f1117;
+$bg-panel:   #1a1d27;
+$bg-card:    #1f2235;
+$border:     rgba(255,255,255,0.07);
+$text-hi:    #f0f4ff;
+$text-mid:   #9aa5c4;
+$text-lo:    #5a6282;
+
+$green:      #22c55e;
+$blue:       #3b82f6;
+$amber:      #f59e0b;
+$red:        #ef4444;
+$purple:     #a855f7;
+
+/* ── Shell ─────────────────────────────────────────────── */
+.monitor {
+  min-height: 100vh;
+  background: $bg-base;
+  color: $text-hi;
+  padding: 1.5rem 1.5rem 3rem;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  font-size: 0.875rem;
+}
+
+/* ── Header ─────────────────────────────────────────────── */
+.monitor__header {
+  margin-bottom: 1.5rem;
+}
+
+.monitor__title-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.monitor__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: $text-hi;
+  margin: 0;
+}
+
+.monitor__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: auto;
+}
+
+.monitor__refresh-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: $text-lo;
+
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: $text-lo;
+    transition: background 0.3s;
+  }
+
+  &.refreshing .dot {
+    background: $blue;
+    animation: blink 0.8s step-start infinite;
+  }
+}
+
+.monitor__live-indicator {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: rgba($text-lo, 0.12);
+  color: $text-lo;
+  border: 1px solid $border;
+
+  &.active {
+    background: rgba($green, 0.12);
+    color: $green;
+    border-color: rgba($green, 0.3);
+  }
+}
+
+.pulse-ring {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: $green;
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px solid $green;
+    animation: pulse-ring 1.5s ease-out infinite;
+    opacity: 0;
+  }
+}
+
+.monitor__error {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: rgba($red, 0.1);
+  border: 1px solid rgba($red, 0.3);
+  color: $red;
+  font-size: 0.8rem;
+}
+
+/* ── Grid ───────────────────────────────────────────────── */
+.monitor__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.25rem;
+
+  @media (max-width: 900px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Panel ──────────────────────────────────────────────── */
+.panel {
+  background: $bg-panel;
+  border: 1px solid $border;
+  border-radius: 14px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  transition: border-color 0.3s;
+
+  &.panel--running  { border-color: rgba($blue, 0.4); }
+  &.panel--completed { border-color: rgba($green, 0.3); }
+  &.panel--failed   { border-color: rgba($red, 0.3); }
+  &.panel--cancelled { border-color: rgba($amber, 0.3); }
+  &.panel--cancelling { border-color: rgba($amber, 0.5); }
+}
+
+.panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panel__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.panel__logo {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1rem;
+  color: #fff;
+
+  &.cimri-logo  { background: linear-gradient(135deg, #e63946, #c1121f); }
+  &.akakce-logo { background: linear-gradient(135deg, #f77f00, #d62828); }
+}
+
+.panel__name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: $text-hi;
+}
+
+/* Status badges */
+.panel__status-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+
+  &.badge--running    { background: rgba($blue, 0.15);   color: $blue;   border: 1px solid rgba($blue, 0.3); }
+  &.badge--completed  { background: rgba($green, 0.15);  color: $green;  border: 1px solid rgba($green, 0.3); }
+  &.badge--failed     { background: rgba($red, 0.15);    color: $red;    border: 1px solid rgba($red, 0.3); }
+  &.badge--cancelled  { background: rgba($amber, 0.15);  color: $amber;  border: 1px solid rgba($amber, 0.3); }
+  &.badge--cancelling { background: rgba($amber, 0.2);   color: $amber;  border: 1px solid rgba($amber, 0.5); }
+  &.badge--           { background: rgba($text-lo, 0.1); color: $text-lo; border: 1px solid $border; }
+}
+
+/* ── Progress ────────────────────────────────────────────── */
+.panel__progress-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.panel__progress-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: $text-mid;
+}
+
+.panel__progress-pct {
+  font-weight: 700;
+  color: $text-hi;
+}
+
+.panel__progress-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  overflow: hidden;
+}
+
+.panel__progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.6s ease;
+  background: $text-lo;
+
+  &.fill--running {
+    background: linear-gradient(90deg, $blue, #60a5fa);
+    animation: shimmer 2s linear infinite;
+    background-size: 200% 100%;
+  }
+  &.fill--done  { background: $green; }
+  &.fill--error { background: $red; }
+}
+
+/* ── Stats ───────────────────────────────────────────────── */
+.panel__stats {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.stat {
+  flex: 1;
+  background: $bg-card;
+  border: 1px solid $border;
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.stat__val {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: $text-hi;
+  white-space: nowrap;
+}
+
+.stat__lbl {
+  font-size: 0.65rem;
+  color: $text-lo;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ── Listing URL ─────────────────────────────────────────── */
+.panel__listing {
+  font-size: 0.72rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 0.65rem;
+  background: $bg-card;
+  border: 1px solid $border;
+  border-radius: 7px;
+  color: $text-lo;
+}
+
+.panel__listing-label {
+  font-weight: 600;
+  color: $text-mid;
+  white-space: nowrap;
+}
+
+.panel__listing-url {
+  color: $blue;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+
+  &:hover { text-decoration: underline; }
+}
+
+.panel__listing-src {
+  color: $text-lo;
+  white-space: nowrap;
+}
+
+/* ── Events ──────────────────────────────────────────────── */
+.panel__events-title {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: $text-lo;
+  margin-bottom: 0.4rem;
+}
+
+.event-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  max-height: 280px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+
+.event-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 0.73rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 5px;
+  border-left: 2px solid transparent;
+  line-height: 1.4;
+
+  &.evt-ok   { border-left-color: $green;  background: rgba($green, 0.05); }
+  &.evt-warn { border-left-color: $amber;  background: rgba($amber, 0.05); }
+  &.evt-err  { border-left-color: $red;    background: rgba($red, 0.05); }
+  &.evt-info { border-left-color: $text-lo; }
+}
+
+.event-icon {
+  font-size: 0.65rem;
+  font-weight: 900;
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+
+  .evt-ok   & { color: $green; }
+  .evt-warn & { color: $amber; }
+  .evt-err  & { color: $red; }
+  .evt-info & { color: $text-lo; }
+}
+
+.event-time {
+  color: $text-lo;
+  font-size: 0.68rem;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.event-phase {
+  color: $purple;
+  font-size: 0.65rem;
+  font-weight: 600;
+  flex-shrink: 0;
+  background: rgba($purple, 0.1);
+  padding: 0 0.3rem;
+  border-radius: 3px;
+}
+
+.event-msg {
+  color: $text-mid;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-progress {
+  color: $text-lo;
+  font-size: 0.65rem;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Empty / No-data states ──────────────────────────────── */
+.panel__no-data,
+.panel__empty-events {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: $text-lo;
+  font-size: 0.8rem;
+  padding: 2rem 0;
+}
+
+/* ── Footer nav ──────────────────────────────────────────── */
+.monitor__nav {
+  margin-top: 1.5rem;
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.monitor__nav-link {
+  font-size: 0.8rem;
+  color: $text-lo;
+  text-decoration: none;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid $border;
+  border-radius: 6px;
+  transition: color 0.2s, border-color 0.2s;
+
+  &:hover {
+    color: $text-hi;
+    border-color: rgba(255,255,255,0.2);
+  }
+}
+
+/* ── Animations ──────────────────────────────────────────── */
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+@keyframes pulse-ring {
+  0%   { transform: scale(0.8); opacity: 0.8; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

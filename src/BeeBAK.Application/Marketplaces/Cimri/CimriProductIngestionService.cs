@@ -3,10 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using BeeBAK.Marketplaces.Cimri.Jobs;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Volo.Abp.BackgroundJobs;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.Domain.Services;
 using Volo.Abp.Guids;
@@ -25,7 +23,7 @@ public class CimriProductIngestionService : DomainService
     private readonly CimriProductDetailScraper _detailScraper;
     private readonly IOptionsMonitor<CimriClientOptions> _options;
     private readonly ILogger<CimriProductIngestionService> _logger;
-    private readonly IBackgroundJobManager _backgroundJobManager;
+    private readonly CimriTelegramPublishQueue _publishQueue;
 
     public CimriProductIngestionService(
         ICimriProductRepository productRepository,
@@ -33,14 +31,14 @@ public class CimriProductIngestionService : DomainService
         CimriProductDetailScraper detailScraper,
         IOptionsMonitor<CimriClientOptions> options,
         ILogger<CimriProductIngestionService> logger,
-        IBackgroundJobManager backgroundJobManager)
+        CimriTelegramPublishQueue publishQueue)
     {
         _productRepository = productRepository;
         _merchantRepository = merchantRepository;
         _detailScraper = detailScraper;
         _options = options;
         _logger = logger;
-        _backgroundJobManager = backgroundJobManager;
+        _publishQueue = publishQueue;
     }
 
     public async Task<CimriIngestionResult> UpsertAsync(
@@ -99,6 +97,10 @@ public class CimriProductIngestionService : DomainService
 
             return CimriIngestionResult.SkippedNoDedup();
         }
+
+        // Güncellemeden önce önceki fiyat/indirim bilgisini sakla (trigger tespiti için)
+        var prevBestPrice   = existing?.BestPriceAmount;
+        var prevDiscountPct = existing?.DiscountPercent;
 
         var product = existing ?? new CimriProduct(
             GuidGenerator.Create(),
@@ -179,16 +181,55 @@ public class CimriProductIngestionService : DomainService
         {
             try
             {
-                await _backgroundJobManager.EnqueueAsync(
-                    new CimriTelegramCardJobArgs { ContentId = card.ContentId });
+                var minDiscount = options.Publish.MinDiscountPercent;
+                var currentDiscount = card.DiscountPercent ?? product.DiscountPercent;
+                var currentPrice    = card.BestPriceAmount ?? product.BestPriceAmount ?? 0m;
+
+                if (currentDiscount >= minDiscount || (prevBestPrice.HasValue && currentPrice < prevBestPrice.Value * 0.97m))
+                {
+                    var triggerType = DetermineTriggerType(
+                        currentPrice, currentDiscount,
+                        prevBestPrice, prevDiscountPct,
+                        existing == null);
+
+                    var score = CimriProductScorer.Calculate(currentDiscount, triggerType);
+
+                    await _publishQueue.EnqueueAsync(new CimriPublishQueueEntry
+                    {
+                        ContentId      = card.ContentId,
+                        TriggerType    = triggerType,
+                        Score          = score,
+                        LowestPrice    = currentPrice,
+                        PreviousPrice  = prevBestPrice,
+                        DiscountPercent = currentDiscount,
+                    }, cancellationToken);
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Telegram job kuyruğa eklenemedi: {ContentId}", card.ContentId);
+                _logger.LogWarning(ex, "Telegram yayın kuyruğuna eklenemedi: {ContentId}", card.ContentId);
             }
         }
 
         return new CimriIngestionResult(product.Id, offersAdded, touchedMerchants, MarkVisitedInDedupCache: true);
+    }
+
+    private static string DetermineTriggerType(
+        decimal currentPrice,
+        decimal? currentDiscount,
+        decimal? prevPrice,
+        decimal? prevDiscount,
+        bool isNew)
+    {
+        if (isNew) return "new";
+
+        if (prevPrice.HasValue && prevPrice.Value > 0m && currentPrice < prevPrice.Value * 0.97m)
+            return "price_drop";
+
+        if (prevDiscount.HasValue && currentDiscount.HasValue && currentDiscount.Value > prevDiscount.Value + 2m)
+            return "discount_up";
+
+        return "new";
     }
 
     private static List<CimriOfferExtract> FilterOffers(

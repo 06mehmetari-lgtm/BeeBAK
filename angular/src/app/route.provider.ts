@@ -51,5 +51,14 @@ function configureRoutes() {
       order: 2,
       requiredPolicy: 'BeeBAK.Akakce',
     },
+    {
+      path: '/marketplaces/monitor',
+      name: '::Menu:MarketplacesMonitor',
+      parentName: '::Menu:Marketplaces',
+      layout: eLayoutType.application,
+      iconClass: 'fas fa-satellite-dish',
+      order: 0,
+      requiredPolicy: 'BeeBAK.Cimri',
+    },
   ]);
 }
