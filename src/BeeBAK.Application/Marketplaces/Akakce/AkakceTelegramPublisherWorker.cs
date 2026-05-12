@@ -18,6 +18,7 @@ namespace BeeBAK.Marketplaces.Akakce;
 public class AkakceTelegramPublisherWorker : AsyncPeriodicBackgroundWorkerBase
 {
     private const string LastSendKey       = "beebak:tg:akakce:last-send-unix";
+    private const string LastMerchantKey   = "beebak:tg:akakce:last-merchant";
     private const string FingerprintPrefix = "beebak:tg:akakce:fp:";
 
     private static readonly Random Rng = new();
@@ -74,7 +75,10 @@ public class AkakceTelegramPublisherWorker : AsyncPeriodicBackgroundWorkerBase
             if (elapsed < requiredDelay) return;
         }
 
-        var entry = await queue.DequeueTopAsync();
+        // Son gönderilen mağazayı oku, farklı mağazayı tercih et
+        var lastMerchant = await cache.GetStringAsync(LastMerchantKey);
+
+        var entry = await queue.DequeueTopAsync(avoidMerchant: lastMerchant);
         if (entry == null) return;
 
         if (isQuiet && entry.Score < 100)
@@ -106,6 +110,13 @@ public class AkakceTelegramPublisherWorker : AsyncPeriodicBackgroundWorkerBase
             await cache.SetStringAsync(LastSendKey,
                 DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(),
                 new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(24) });
+
+            // Son gönderilen mağazayı kaydet (bir sonraki gönderimde farklı mağaza seçilsin)
+            if (!string.IsNullOrEmpty(entry.MerchantName))
+            {
+                await cache.SetStringAsync(LastMerchantKey, entry.MerchantName,
+                    new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(6) });
+            }
 
             // Canlı izleme geçmişine kaydet
             try
