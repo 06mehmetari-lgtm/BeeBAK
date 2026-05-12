@@ -123,6 +123,285 @@ $purple:     #a855f7;
   font-size: 0.8rem;
 }
 
+/* ── Sections ──────────────────────────────────────────── */
+.monitor__section {
+  margin-bottom: 2rem;
+}
+
+.monitor__section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: $text-hi;
+  margin: 0 0 0.9rem;
+  letter-spacing: -0.01em;
+}
+
+.section-count {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: $text-lo;
+  background: rgba(255,255,255,0.05);
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid $border;
+}
+
+.mkt-badge {
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.85rem;
+  color: #fff;
+  flex-shrink: 0;
+
+  &.mkt-badge--cimri  { background: linear-gradient(135deg, #e63946, #c1121f); }
+  &.mkt-badge--akakce { background: linear-gradient(135deg, #f77f00, #d62828); }
+}
+
+/* ── Runs Grid (3 per row) ──────────────────────────────── */
+.runs-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+
+  @media (max-width: 1100px) { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 700px)  { grid-template-columns: 1fr; }
+
+  &.runs-grid--empty {
+    grid-template-columns: 1fr;
+  }
+}
+
+.runs-empty {
+  padding: 2rem;
+  text-align: center;
+  color: $text-lo;
+  font-size: 0.8rem;
+  background: $bg-panel;
+  border: 1px dashed $border;
+  border-radius: 10px;
+}
+
+/* ── Run Card ───────────────────────────────────────────── */
+.run-card {
+  background: $bg-panel;
+  border: 1px solid $border;
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  transition: border-color 0.3s;
+
+  &.run-card--running   { border-color: rgba($blue, 0.45); }
+  &.run-card--completed { border-color: rgba($green, 0.3); }
+  &.run-card--failed    { border-color: rgba($red, 0.3); }
+  &.run-card--cancelled { border-color: rgba($amber, 0.3); }
+}
+
+.run-card__head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.run-card__status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+
+  &.dot--running   { background: $blue;  animation: blink 1.2s step-start infinite; }
+  &.dot--completed { background: $green; }
+  &.dot--failed    { background: $red; }
+  &.dot--cancelled { background: $amber; }
+  &.dot--          { background: $text-lo; }
+}
+
+.run-card__status-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
+
+  &.lbl--running   { color: $blue; }
+  &.lbl--completed { color: $green; }
+  &.lbl--failed    { color: $red; }
+  &.lbl--cancelled { color: $amber; }
+  &.lbl--          { color: $text-lo; }
+}
+
+.run-card__url {
+  flex: 1;
+  font-size: 0.7rem;
+  color: $text-mid;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.run-card__time {
+  font-size: 0.65rem;
+  color: $text-lo;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Compact Progress Track ──────────────────────────────── */
+.run-card__progress-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.05);
+  overflow: hidden;
+}
+
+.run-card__progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.5s ease;
+  background: $text-lo;
+
+  &.fill--running {
+    background: linear-gradient(90deg, $blue, #60a5fa);
+    animation: shimmer 2s linear infinite;
+    background-size: 200% 100%;
+  }
+  &.fill--done  { background: $green; }
+  &.fill--error { background: $red; }
+}
+
+/* ── Stat Chips ──────────────────────────────────────────── */
+.run-card__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.stat-chip {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.15rem 0.45rem;
+  border-radius: 5px;
+  background: rgba(255,255,255,0.05);
+  color: $text-mid;
+  border: 1px solid $border;
+  font-variant-numeric: tabular-nums;
+
+  &.stat-chip--err { color: $red;   background: rgba($red, 0.07);   border-color: rgba($red, 0.2); }
+  &.stat-chip--eta { color: $amber; background: rgba($amber, 0.07); border-color: rgba($amber, 0.2); }
+  &.stat-chip--pct { color: $blue;  background: rgba($blue, 0.07);  border-color: rgba($blue, 0.2); font-weight: 700; }
+}
+
+/* ── Run Card Events ─────────────────────────────────────── */
+.run-card__events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  max-height: 180px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.07) transparent;
+}
+
+.ev {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  font-size: 0.68rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  border-left: 2px solid transparent;
+  line-height: 1.35;
+
+  &.evt-ok   { border-left-color: $green;   background: rgba($green, 0.04); }
+  &.evt-warn { border-left-color: $amber;   background: rgba($amber, 0.04); }
+  &.evt-err  { border-left-color: $red;     background: rgba($red, 0.04); }
+  &.evt-info { border-left-color: $text-lo; }
+}
+
+.ev-icon {
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+  font-size: 0.6rem;
+  font-weight: 900;
+
+  .evt-ok   & { color: $green; }
+  .evt-warn & { color: $amber; }
+  .evt-err  & { color: $red; }
+  .evt-info & { color: $text-lo; }
+}
+
+.ev-time {
+  color: $text-lo;
+  font-size: 0.63rem;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.ev-msg {
+  flex: 1;
+  color: $text-mid;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ev-idx {
+  color: $text-lo;
+  font-size: 0.6rem;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.run-card__waiting {
+  font-size: 0.72rem;
+  color: $text-lo;
+  text-align: center;
+  padding: 0.5rem;
+  font-style: italic;
+}
+
+/* ── Stat pill in header ─────────────────────────────────── */
+.monitor__stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: $text-mid;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid $border;
+  background: rgba(255,255,255,0.04);
+  font-variant-numeric: tabular-nums;
+}
+
+.pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: $text-lo;
+
+  &.pill-dot--active {
+    background: $green;
+    animation: blink 1.5s step-start infinite;
+  }
+}
+
 /* ── Grid ───────────────────────────────────────────────── */
 .monitor__grid {
   display: grid;
@@ -429,6 +708,133 @@ $purple:     #a855f7;
     color: $text-hi;
     border-color: rgba(255,255,255,0.2);
   }
+}
+
+/* ── Telegram Cards ──────────────────────────────────────── */
+.tg-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 0.85rem;
+}
+
+.tg-card {
+  display: flex;
+  flex-direction: column;
+  background: $bg-panel;
+  border: 1px solid $border;
+  border-radius: 12px;
+  overflow: hidden;
+  text-decoration: none;
+  color: $text-hi;
+  transition: border-color 0.2s, transform 0.15s;
+
+  &:hover {
+    border-color: rgba(255,255,255,0.2);
+    transform: translateY(-2px);
+  }
+
+  &.tg-card--cimri  { border-top: 2px solid rgba(#e63946, 0.5); }
+  &.tg-card--akakce { border-top: 2px solid rgba(#f77f00, 0.5); }
+}
+
+.tg-card__img-wrap {
+  position: relative;
+  aspect-ratio: 1/1;
+  background: $bg-card;
+  overflow: hidden;
+}
+
+.tg-card__img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 0.25rem;
+}
+
+.tg-card__img-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  font-weight: 900;
+  color: $text-lo;
+}
+
+.tg-card__discount {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 0.15rem 0.4rem;
+  border-radius: 5px;
+
+  &.disc--hot  { background: $red;   color: #fff; }
+  &.disc--warm { background: $amber; color: #000; }
+  &.disc--cool { background: $blue;  color: #fff; }
+}
+
+.tg-card__body {
+  padding: 0.6rem 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex: 1;
+}
+
+.tg-card__title {
+  font-size: 0.73rem;
+  line-height: 1.35;
+  color: $text-hi;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tg-card__prices {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.tg-card__price {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: $text-hi;
+  font-variant-numeric: tabular-nums;
+}
+
+.tg-card__prev {
+  font-size: 0.68rem;
+  color: $text-lo;
+  text-decoration: line-through;
+  font-variant-numeric: tabular-nums;
+}
+
+.tg-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.3rem;
+  margin-top: auto;
+}
+
+.tg-card__trigger {
+  font-size: 0.62rem;
+  color: $purple;
+  font-weight: 600;
+}
+
+.tg-card__ago {
+  font-size: 0.62rem;
+  color: $text-lo;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Animations ──────────────────────────────────────────── */
