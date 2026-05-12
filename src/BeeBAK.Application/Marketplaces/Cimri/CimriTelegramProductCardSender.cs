@@ -94,18 +94,13 @@ public class CimriTelegramProductCardSender : ICimriTelegramProductCardSender, I
         var chatId = opts.ChatId.Trim();
         var client = _httpClientFactory.CreateClient(HttpClientName);
 
-        // Ürün kartını render et ve Telegram'a yükle
-        var ok = await TrySendRenderedCardAsync(client, token, chatId, product, merchantsById, caption, cancellationToken);
-
-        // Kart render başarısız olursa ürün fotoğrafına, o da başarısız olursa metin mesajına düş
-        if (!ok)
+        // Orijinal ürün fotoğrafını gönder (overlay/gölge içermeyen)
+        var photoUrl = product.PrimaryImageUrl?.Trim();
+        bool ok = false;
+        if (!string.IsNullOrWhiteSpace(photoUrl) && Uri.TryCreate(photoUrl, UriKind.Absolute, out var pu) &&
+            (pu.Scheme == Uri.UriSchemeHttp || pu.Scheme == Uri.UriSchemeHttps))
         {
-            var photoUrl = product.PrimaryImageUrl?.Trim();
-            if (!string.IsNullOrWhiteSpace(photoUrl) && Uri.TryCreate(photoUrl, UriKind.Absolute, out var pu) &&
-                (pu.Scheme == Uri.UriSchemeHttp || pu.Scheme == Uri.UriSchemeHttps))
-            {
-                ok = await TrySendPhotoAsync(client, token, chatId, photoUrl, caption, cancellationToken);
-            }
+            ok = await TrySendPhotoAsync(client, token, chatId, photoUrl, caption, cancellationToken);
         }
 
         if (!ok)

@@ -72,14 +72,12 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         var token  = telegram.BotToken.Trim();
         var chatId = telegram.ChatId.Trim();
 
-        var ok = await TrySendRenderedCardAsync(client, token, chatId, product, offers, cheapest, merchantName, caption, cancellationToken);
-        if (!ok)
-        {
-            var photoUrl = product.PrimaryImageUrl?.Trim();
-            if (!string.IsNullOrWhiteSpace(photoUrl) && Uri.TryCreate(photoUrl, UriKind.Absolute, out var pu)
-                && (pu.Scheme == Uri.UriSchemeHttp || pu.Scheme == Uri.UriSchemeHttps))
-                ok = await TrySendPhotoAsync(client, token, chatId, photoUrl, caption, cancellationToken);
-        }
+        // Orijinal ürün fotoğrafını gönder (overlay/gölge içermeyen)
+        var photoUrl = product.PrimaryImageUrl?.Trim();
+        bool ok = false;
+        if (!string.IsNullOrWhiteSpace(photoUrl) && Uri.TryCreate(photoUrl, UriKind.Absolute, out var pu)
+            && (pu.Scheme == Uri.UriSchemeHttp || pu.Scheme == Uri.UriSchemeHttps))
+            ok = await TrySendPhotoAsync(client, token, chatId, photoUrl, caption, cancellationToken);
         if (!ok)
             await TrySendMessageAsync(client, token, chatId, caption, cancellationToken);
     }
