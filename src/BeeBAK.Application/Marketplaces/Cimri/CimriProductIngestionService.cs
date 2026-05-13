@@ -194,10 +194,17 @@ public class CimriProductIngestionService : DomainService
 
                     var score = CimriProductScorer.Calculate(currentDiscount, triggerType);
 
+                    // detail.CategoryPath daha güvenilir (indirimli-urunler gibi çok kategorili
+                    // sayfalarda card.CategorySlug boş gelir; detail PDP'den alınan gerçek kategoridir)
+                    var effectiveCategorySlug = !string.IsNullOrEmpty(detail.CategoryPath)
+                        ? detail.CategoryPath
+                        : card.CategorySlug;
+
                     // Kitap kategorisi Telegram'a gönderilmez
-                    if (TelegramCategoryFilter.IsBlocked(card.CategorySlug, card.Title))
+                    if (TelegramCategoryFilter.IsBlocked(effectiveCategorySlug, card.Title))
                     {
-                        _logger.LogDebug("Cimri: kitap/engelli kategori, kuyruklanmadı ({ContentId})", card.ContentId);
+                        _logger.LogDebug("Cimri: kitap/engelli kategori, kuyruklanmadı ({ContentId}, cat={Cat})",
+                            card.ContentId, effectiveCategorySlug);
                     }
                     else
                     {
@@ -211,13 +218,14 @@ public class CimriProductIngestionService : DomainService
                         await _publishQueue.EnqueueAsync(new CimriPublishQueueEntry
                         {
                             ContentId       = card.ContentId,
+                            Title           = card.Title,
                             TriggerType     = triggerType,
                             Score           = score,
                             LowestPrice     = currentPrice,
                             PreviousPrice   = prevBestPrice,
                             DiscountPercent = currentDiscount,
                             MerchantName    = cheapestMerchant,
-                            CategorySlug    = card.CategorySlug,
+                            CategorySlug    = effectiveCategorySlug,
                         }, cancellationToken);
                     }
                 }

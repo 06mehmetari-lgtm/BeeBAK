@@ -88,8 +88,8 @@ public class AkakceTelegramPublisherWorker : AsyncPeriodicBackgroundWorkerBase
             return;
         }
 
-        // Kategori filtresi (kitap ve benzeri kategoriler engellenir)
-        if (TelegramCategoryFilter.IsBlocked(entry.CategorySlug, null))
+        // Kategori filtresi (kitap ve benzeri kategoriler kesinlikle engellenir)
+        if (TelegramCategoryFilter.IsBlocked(entry.CategorySlug, entry.Title))
         {
             logger.LogDebug("Akakce publisher: engelli kategori, atlanıyor ({ProductCode}, cat={Cat})",
                 entry.ProductCode, entry.CategorySlug);

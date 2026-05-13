@@ -10,6 +10,9 @@ public class CimriPublishQueueEntry
 {
     public string ContentId { get; set; } = "";
 
+    /// <summary>Ürün başlığı — kategori filtresi için (publisher worker'da kullanılır)</summary>
+    public string? Title { get; set; }
+
     /// <summary>new | price_drop | discount_up</summary>
     public string TriggerType { get; set; } = "new";
 

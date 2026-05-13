@@ -164,6 +164,7 @@ public class AkakceProductIngestionService : DomainService
                         await _publishQueue.EnqueueAsync(new AkakcePublishQueueEntry
                         {
                             ProductCode     = card.ProductCode,
+                            Title           = card.Title,
                             TriggerType     = triggerType,
                             Score           = score,
                             LowestPrice     = currentPrice,

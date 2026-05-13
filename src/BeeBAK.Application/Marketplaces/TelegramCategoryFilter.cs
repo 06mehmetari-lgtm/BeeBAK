@@ -12,34 +12,54 @@ public static class TelegramCategoryFilter
     // ── Kategori slug / path içinde geçmemesi gereken anahtar kelimeler ──
     private static readonly string[] BlockedCategoryKeywords =
     [
+        // ── Kitap / yayın ──
         "kitap",
+        "kitaplar",
         "book",
+        "books",
         "roman",
         "edebiyat",
         "e-kitap",
         "ekitap",
         "hikaye",
-        "hikâye",
-        "masal",
-        "sözlük",
-        "ansiklopedi",
+        "hikaye-kitap",
+        "hikaye-roman",
+        "polisiye",
+        "bilim-kurgu",
+        "fantastik",
+        "cocuk-kitap",
+        "ders-kitap",
+        "egitim-kitap",
+        "yayinlari",    // yayınları
+        "yayinevi",
+        "yayinci",
+        // ── Basın / medya ──
         "dergi",
         "magazine",
         "gazete",
         "newspaper",
+        // ── Referans ──
+        "sozluk",       // sözlük
+        "ansiklopedi",
         "atlas",
+        "masal",
     ];
 
     // ── Başlıkta tam kelime olarak geçmemesi gereken ifadeler ──
     private static readonly string[] BlockedTitleKeywords =
     [
         "kitap",
-        "kitabı",
-        "kitabın",
-        "kitabını",
+        "kitabi",       // kitabı
+        "kitabin",      // kitabın
+        "kitabini",     // kitabını
+        "kitapligi",    // kitaplığı
         "roman",
-        "hikâye kitabı",
-        "hikaye kitabı",
+        "hikaye kitabi",
+        "ders kitabi",
+        "egitim seti",
+        "sozluk",
+        "ansiklopedi",
+        "polisiye",
     ];
 
     /// <summary>

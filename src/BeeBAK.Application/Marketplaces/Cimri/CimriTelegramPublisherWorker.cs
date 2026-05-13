@@ -113,8 +113,8 @@ public class CimriTelegramPublisherWorker : AsyncPeriodicBackgroundWorkerBase
             return;
         }
 
-        // ── 4a. Kategori filtresi (kitap ve benzeri kategoriler engellenir) ──
-        if (TelegramCategoryFilter.IsBlocked(entry.CategorySlug, null))
+        // ── 4a. Kategori filtresi (kitap ve benzeri kategoriler kesinlikle engellenir) ──
+        if (TelegramCategoryFilter.IsBlocked(entry.CategorySlug, entry.Title))
         {
             logger.LogDebug("Cimri publisher: engelli kategori, atlanıyor ({ContentId}, cat={Cat})",
                 entry.ContentId, entry.CategorySlug);

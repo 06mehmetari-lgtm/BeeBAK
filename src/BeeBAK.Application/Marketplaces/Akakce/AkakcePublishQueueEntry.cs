@@ -5,6 +5,10 @@ namespace BeeBAK.Marketplaces.Akakce;
 public class AkakcePublishQueueEntry
 {
     public string ProductCode { get; set; } = "";
+
+    /// <summary>Ürün başlığı — kategori filtresi için (publisher worker'da kullanılır)</summary>
+    public string? Title { get; set; }
+
     public string TriggerType { get; set; } = "new";
     public double Score { get; set; }
     public decimal LowestPrice { get; set; }
