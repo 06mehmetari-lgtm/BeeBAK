@@ -262,7 +262,7 @@ services:
       # Akıllı yayın motoru
       Cimri__Publish__MinDelayMinutes: "3"
       Cimri__Publish__MaxDelayMinutes: "7"
-      Cimri__Publish__MinDiscountPercent: "20"
+      Cimri__Publish__MinDiscountPercent: "10"
       Cimri__Publish__QuietStartHour: "3"
       Cimri__Publish__QuietEndHour: "6"
       # ── Robot 1: Cimri — 3 URL AYNI ANDA taranır ───────────────────────────
@@ -309,7 +309,7 @@ services:
       # Akakçe yayın motoru
       Akakce__Publish__MinDelayMinutes: "3"
       Akakce__Publish__MaxDelayMinutes: "7"
-      Akakce__Publish__MinDiscountPercent: "20"
+      Akakce__Publish__MinDiscountPercent: "10"
       Akakce__Publish__QuietStartHour: "3"
       Akakce__Publish__QuietEndHour: "6"
 
