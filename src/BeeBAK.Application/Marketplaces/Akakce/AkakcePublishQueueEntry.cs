@@ -14,5 +14,8 @@ public class AkakcePublishQueueEntry
     /// <summary>En ucuz teklifin mağaza adı — çeşitlilik kontrolü için</summary>
     public string MerchantName { get; set; } = "";
 
+    /// <summary>Ürün kategori yolu — kategori bazlı filtreler için</summary>
+    public string? CategorySlug { get; set; }
+
     public long EnqueuedAtUnix { get; set; } = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 }
