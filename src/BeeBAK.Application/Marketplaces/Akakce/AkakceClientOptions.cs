@@ -7,7 +7,7 @@ public class AkakceClientOptions
     public const string SectionName = "Akakce";
 
     public string BaseUrl { get; set; } = "https://www.akakce.com";
-    public string? ListingPageUrl { get; set; } = "https://www.akakce.com/fiyati-dusen-urunler/?s=5";
+    public string? ListingPageUrl { get; set; } = "https://www.akakce.com/son-alti-ayin-en-ucuz-fiyatli-urunleri/?s=5";
     public string? AllowedAkakceHostSuffix { get; set; } = "akakce.com";
     public int DefaultMaxPages { get; set; } = 5;
     public int DefaultMaxProducts { get; set; } = 100;
