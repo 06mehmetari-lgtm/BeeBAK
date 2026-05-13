@@ -10,11 +10,14 @@ namespace BeeBAK.Marketplaces;
 public static class TelegramCategoryFilter
 {
     // ── Kategori slug / path içinde geçmemesi gereken anahtar kelimeler ──
+    // ÖNEMLİ: "kitap" tek başına KULLANILMAZ çünkü Cimri'de "Kitap, Müzik, Hobi"
+    // üst kategorisi müzik, oyun ve hobi ürünlerini de içerir; "kitap" bunu da eşleştirip
+    // tüm bu kategorileri yanlışlıkla engeller. Bunun yerine "kitaplar" (gerçek kitap alt
+    // kategorisi) ve diğer özgün keyword'ler kullanılır.
     private static readonly string[] BlockedCategoryKeywords =
     [
-        // ── Kitap / yayın ──
-        "kitap",
-        "kitaplar",
+        // ── Kitap alt kategorileri ──
+        "kitaplar",          // Cimri: "› Kitaplar ›" — gerçek kitap alt kategorisi
         "book",
         "books",
         "roman",
@@ -22,24 +25,20 @@ public static class TelegramCategoryFilter
         "e-kitap",
         "ekitap",
         "hikaye",
-        "hikaye-kitap",
-        "hikaye-roman",
         "polisiye",
         "bilim-kurgu",
         "fantastik",
-        "cocuk-kitap",
         "ders-kitap",
-        "egitim-kitap",
-        "yayinlari",    // yayınları
+        "cocuk-kitap",
+        "yayinlari",         // yayınları — yayınevine ait kategori
         "yayinevi",
-        "yayinci",
         // ── Basın / medya ──
         "dergi",
         "magazine",
         "gazete",
         "newspaper",
         // ── Referans ──
-        "sozluk",       // sözlük
+        "sozluk",
         "ansiklopedi",
         "atlas",
         "masal",
