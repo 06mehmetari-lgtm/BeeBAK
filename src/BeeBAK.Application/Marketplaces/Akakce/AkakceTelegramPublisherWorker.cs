@@ -88,6 +88,14 @@ public class AkakceTelegramPublisherWorker : AsyncPeriodicBackgroundWorkerBase
             return;
         }
 
+        // Kategori filtresi (kitap ve benzeri kategoriler engellenir)
+        if (TelegramCategoryFilter.IsBlocked(entry.CategorySlug, null))
+        {
+            logger.LogDebug("Akakce publisher: engelli kategori, atlanıyor ({ProductCode}, cat={Cat})",
+                entry.ProductCode, entry.CategorySlug);
+            return;
+        }
+
         // 24 saat ürün cooldown (aynı ürün 24 saat içinde tekrar gönderilmez)
         var cooldownKey = SentCooldownPrefix + entry.ProductCode;
         if (!string.IsNullOrEmpty(await cache.GetStringAsync(cooldownKey)))

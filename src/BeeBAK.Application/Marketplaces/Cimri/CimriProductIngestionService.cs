@@ -194,23 +194,32 @@ public class CimriProductIngestionService : DomainService
 
                     var score = CimriProductScorer.Calculate(currentDiscount, triggerType);
 
-                    // En ucuz teklifin mağaza adı (mağaza çeşitliliği için)
-                    var cheapestMerchant = filteredOffers
-                        .OrderBy(o => o.Price)
-                        .FirstOrDefault()?.MerchantName?.Trim()
-                        ?? card.BestMerchantName?.Trim()
-                        ?? "";
-
-                    await _publishQueue.EnqueueAsync(new CimriPublishQueueEntry
+                    // Kitap kategorisi Telegram'a gönderilmez
+                    if (TelegramCategoryFilter.IsBlocked(card.CategorySlug, card.Title))
                     {
-                        ContentId       = card.ContentId,
-                        TriggerType     = triggerType,
-                        Score           = score,
-                        LowestPrice     = currentPrice,
-                        PreviousPrice   = prevBestPrice,
-                        DiscountPercent = currentDiscount,
-                        MerchantName    = cheapestMerchant,
-                    }, cancellationToken);
+                        _logger.LogDebug("Cimri: kitap/engelli kategori, kuyruklanmadı ({ContentId})", card.ContentId);
+                    }
+                    else
+                    {
+                        // En ucuz teklifin mağaza adı (mağaza çeşitliliği için)
+                        var cheapestMerchant = filteredOffers
+                            .OrderBy(o => o.Price)
+                            .FirstOrDefault()?.MerchantName?.Trim()
+                            ?? card.BestMerchantName?.Trim()
+                            ?? "";
+
+                        await _publishQueue.EnqueueAsync(new CimriPublishQueueEntry
+                        {
+                            ContentId       = card.ContentId,
+                            TriggerType     = triggerType,
+                            Score           = score,
+                            LowestPrice     = currentPrice,
+                            PreviousPrice   = prevBestPrice,
+                            DiscountPercent = currentDiscount,
+                            MerchantName    = cheapestMerchant,
+                            CategorySlug    = card.CategorySlug,
+                        }, cancellationToken);
+                    }
                 }
             }
             catch (Exception ex)
