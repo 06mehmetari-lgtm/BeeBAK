@@ -148,22 +148,31 @@ public class AkakceProductIngestionService : DomainService
                     var triggerType = DetermineTriggerType(currentPrice, currentDiscount, prevBestPrice, prevDiscountPct, existing == null);
                     var score = ComputeScore(currentDiscount, triggerType);
 
-                    // En ucuz teklifin mağaza adı (mağaza çeşitliliği için)
-                    var cheapestMerchant = detail.Offers
-                        .OrderBy(o => o.Price)
-                        .FirstOrDefault()?.MerchantName?.Trim()
-                        ?? "";
-
-                    await _publishQueue.EnqueueAsync(new AkakcePublishQueueEntry
+                    // Kitap kategorisi Telegram'a gönderilmez
+                    if (TelegramCategoryFilter.IsBlocked(detail.CategoryPath, card.Title))
                     {
-                        ProductCode     = card.ProductCode,
-                        TriggerType     = triggerType,
-                        Score           = score,
-                        LowestPrice     = currentPrice,
-                        PreviousPrice   = prevBestPrice,
-                        DiscountPercent = currentDiscount,
-                        MerchantName    = cheapestMerchant,
-                    }, cancellationToken);
+                        _logger.LogDebug("Akakce: kitap/engelli kategori, kuyruklanmadı ({ProductCode})", card.ProductCode);
+                    }
+                    else
+                    {
+                        // En ucuz teklifin mağaza adı (mağaza çeşitliliği için)
+                        var cheapestMerchant = detail.Offers
+                            .OrderBy(o => o.Price)
+                            .FirstOrDefault()?.MerchantName?.Trim()
+                            ?? "";
+
+                        await _publishQueue.EnqueueAsync(new AkakcePublishQueueEntry
+                        {
+                            ProductCode     = card.ProductCode,
+                            TriggerType     = triggerType,
+                            Score           = score,
+                            LowestPrice     = currentPrice,
+                            PreviousPrice   = prevBestPrice,
+                            DiscountPercent = currentDiscount,
+                            MerchantName    = cheapestMerchant,
+                            CategorySlug    = detail.CategoryPath,
+                        }, cancellationToken);
+                    }
                 }
             }
             catch (Exception ex)

@@ -113,7 +113,15 @@ public class CimriTelegramPublisherWorker : AsyncPeriodicBackgroundWorkerBase
             return;
         }
 
-        // ── 4a. 24 saat ürün cooldown (aynı ürün 24 saat içinde tekrar gönderilmez) ──
+        // ── 4a. Kategori filtresi (kitap ve benzeri kategoriler engellenir) ──
+        if (TelegramCategoryFilter.IsBlocked(entry.CategorySlug, null))
+        {
+            logger.LogDebug("Cimri publisher: engelli kategori, atlanıyor ({ContentId}, cat={Cat})",
+                entry.ContentId, entry.CategorySlug);
+            return;
+        }
+
+        // ── 4b. 24 saat ürün cooldown (aynı ürün 24 saat içinde tekrar gönderilmez) ──
         var cooldownKey = SentCooldownPrefix + entry.ContentId;
         if (!string.IsNullOrEmpty(await cache.GetStringAsync(cooldownKey)))
         {
