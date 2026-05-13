@@ -29,7 +29,8 @@ public class AkakceAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
 {
     private const string MutexKey          = "akakce:autosync:mutex";
     private const string CooldownKeyPrefix = "beebak:akakce:url:cd:";
-    private static readonly TimeSpan StuckRunThreshold = TimeSpan.FromMinutes(90);
+    private const string ForceResyncKey    = "beebak:system:force-resync";
+    private static readonly TimeSpan StuckRunThreshold = TimeSpan.FromMinutes(20);
 
     public AkakceAutoSyncWorker(
         AbpAsyncTimer timer,
@@ -109,21 +110,38 @@ public class AkakceAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
         var guidGenerator = sp.GetRequiredService<IGuidGenerator>();
         var jobManager    = sp.GetRequiredService<IBackgroundJobManager>();
 
+        // Watchdog force-resync flag'ini kontrol et
+        bool forceResync = false;
+        try
+        {
+            var fr = await cache.GetAsync(ForceResyncKey);
+            if (fr != null)
+            {
+                forceResync = true;
+                await cache.RemoveAsync(ForceResyncKey);
+                logger.LogWarning("AkakceAutoSync: force-resync flag bulundu — tüm cooldown'lar atlanıyor.");
+            }
+        }
+        catch { }
+
         int enqueued = 0;
         foreach (var url in allUrls)
         {
             var cdKey = CooldownKeyPrefix + GetHash(url);
 
-            try
+            if (!forceResync)
             {
-                var cd = await cache.GetAsync(cdKey);
-                if (cd != null)
+                try
                 {
-                    logger.LogDebug("AkakceAutoSync: {Url} cooldown'da — atlanıyor.", url);
-                    continue;
+                    var cd = await cache.GetAsync(cdKey);
+                    if (cd != null)
+                    {
+                        logger.LogDebug("AkakceAutoSync: {Url} cooldown'da — atlanıyor.", url);
+                        continue;
+                    }
                 }
+                catch { }
             }
-            catch { }
 
             try
             {

@@ -2,7 +2,7 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: beebak-postgres
-    restart: unless-stopped
+    restart: always
     environment:
       POSTGRES_DB: BeeBAK
       POSTGRES_USER: postgres
@@ -20,7 +20,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: beebak-redis
-    restart: unless-stopped
+    restart: always
     ports:
       - "6379:6379"
     healthcheck:
@@ -32,7 +32,7 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     container_name: beebak-rabbitmq
-    restart: unless-stopped
+    restart: always
     environment:
       RABBITMQ_DEFAULT_USER: beebak
       RABBITMQ_DEFAULT_PASS: beebak
@@ -48,13 +48,13 @@ services:
   selenium-hub:
     image: selenium/hub:4.27.0
     container_name: beebak-selenium-hub
-    restart: unless-stopped
+    restart: always
     environment:
-      # 6 eş zamanlı URL için hub kapasitesi artırıldı
-      SE_NODE_MAX_SESSIONS: "6"
-      GRID_NEW_SESSION_WAIT_TIMEOUT: "120000"
-      GRID_BROWSER_TIMEOUT: "300"
-      GRID_TIMEOUT: "600"
+      # CX33 (4 çekirdek): 4 node × 3 session = 12 eş zamanlı Selenium oturumu
+      SE_NODE_MAX_SESSIONS: "12"
+      GRID_NEW_SESSION_WAIT_TIMEOUT: "60000"
+      GRID_BROWSER_TIMEOUT: "180"
+      GRID_TIMEOUT: "300"
     ports:
       - "4442:4442"
       - "4443:4443"
@@ -62,8 +62,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "1.0"
-          memory: 512M
+          cpus: "0.5"
+          memory: 384M
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:4444/wd/hub/status || exit 1"]
       interval: 10s
@@ -73,7 +73,7 @@ services:
 
   chrome-node:
     image: selenium/node-chrome:4.27.0
-    restart: unless-stopped
+    restart: always
     shm_size: 512m
     depends_on:
       selenium-hub:
@@ -82,18 +82,18 @@ services:
       SE_EVENT_BUS_HOST: selenium-hub
       SE_EVENT_BUS_PUBLISH_PORT: "4442"
       SE_EVENT_BUS_SUBSCRIBE_PORT: "4443"
-      SE_NODE_MAX_SESSIONS: "2"
+      SE_NODE_MAX_SESSIONS: "3"
       SE_NODE_OVERRIDE_MAX_SESSIONS: "true"
-      SE_NODE_SESSION_TIMEOUT: "300"
+      SE_NODE_SESSION_TIMEOUT: "180"
       SE_VNC_NO_PASSWORD: "1"
       SE_OPTS: "--detect-drivers true"
     deploy:
-      # 3 node × 2 session = 6 eş zamanlı Selenium oturumu
-      replicas: 3
+      # CX33: 4 node × 3 session = 12 eş zamanlı Selenium oturumu
+      replicas: 4
       resources:
         limits:
-          cpus: "1.0"
-          memory: 800M
+          cpus: "0.8"
+          memory: 700M
 
   dbmigrator:
     build:
@@ -118,7 +118,7 @@ services:
       context: .
       dockerfile: Dockerfile.api
     container_name: beebak-api
-    restart: unless-stopped
+    restart: always
     depends_on:
       postgres:
         condition: service_healthy
@@ -177,7 +177,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1024M
+          memory: 768M
 
   worker:
     build:
@@ -185,8 +185,9 @@ services:
       dockerfile: Dockerfile.worker
     restart: always
     healthcheck:
+      # Her 1 dakikada kontrol — 3 başarısız = yeniden başlat
       test: ["CMD-SHELL", "pgrep -f BeeBAK.WorkerHost || exit 1"]
-      interval: 2m
+      interval: 1m
       timeout: 10s
       retries: 3
       start_period: 60s
@@ -194,7 +195,8 @@ services:
       replicas: 1
       resources:
         limits:
-          memory: 800M
+          # CX33: 8GB RAM → worker için 1.5GB yeterli
+          memory: 1536M
     depends_on:
       postgres:
         condition: service_healthy
@@ -214,33 +216,40 @@ services:
       RabbitMq__Connections__Default__Port: "5672"
       RabbitMq__Connections__Default__UserName: "beebak"
       RabbitMq__Connections__Default__Password: "beebak"
+      RabbitMq__Connections__Default__RequestedHeartbeat: "30"
+      RabbitMq__Connections__Default__NetworkRecoveryInterval: "10"
+      RabbitMq__Connections__Default__AutomaticRecoveryEnabled: "true"
       BackgroundJobs__IsJobExecutionEnabled: "true"
+      # ── Cimri Selenium ayarları (CX33 hızlı) ───────────────────────────
       Cimri__BaseUrl: "https://www.cimri.com"
       Cimri__AllowedCimriHostSuffix: "cimri.com"
       Cimri__SeleniumGridUrl: "http://selenium-hub:4444/wd/hub"
       Cimri__SeleniumHeadless: "true"
+      Cimri__SeleniumCommandTimeoutMs: "90000"
       Cimri__BlockImages: "true"
       Cimri__BlockFonts: "true"
       Cimri__UseQueue: "true"
       Cimri__DefaultMaxPages: "1"
       Cimri__DefaultMaxProducts: "10"
       Cimri__DedupTtlSeconds: "21600"
-      Cimri__ScrollPasses: "2"
-      Cimri__ScrollPauseMs: "200"
-      Cimri__DetailWaitTimeoutMs: "8000"
-      Cimri__ExpandOffersClickPauseMs: "500"
-      Cimri__LoadMoreClickPauseMs: "700"
-      Cimri__DelayBetweenProductsMs: "400"
-      Cimri__OfferResolveTimeoutMs: "4000"
-      Cimri__MaxOfferUrlsToResolveViaSelenium: "10"
+      Cimri__ScrollPasses: "1"
+      Cimri__ScrollPauseMs: "100"
+      Cimri__DetailWaitTimeoutMs: "6000"
+      Cimri__ExpandOffersClickPauseMs: "300"
+      Cimri__LoadMoreClickPauseMs: "400"
+      Cimri__DelayBetweenProductsMs: "0"
+      Cimri__OfferResolveTimeoutMs: "3000"
+      Cimri__MaxOfferUrlsToResolveViaSelenium: "5"
       Cimri__OfferUrlCacheTtlSeconds: "604800"
       Cimri__RequireMerchantProductId: "false"
       Cimri__SkipProductWithoutQualifiedOffers: "false"
+      # ── Akakce Selenium ayarları (CX33 hızlı) ──────────────────────────
       Akakce__BaseUrl: "https://www.akakce.com"
       Akakce__AllowedAkakceHostSuffix: "akakce.com"
       Akakce__ListingPageUrl: "https://www.akakce.com/fark-atan-fiyatlar/"
       Akakce__SeleniumGridUrl: "http://selenium-hub:4444/wd/hub"
       Akakce__SeleniumHeadless: "true"
+      Akakce__SeleniumCommandTimeoutMs: "90000"
       Akakce__BlockImages: "true"
       Akakce__BlockFonts: "true"
       Akakce__UseQueue: "true"
@@ -248,60 +257,61 @@ services:
       Akakce__DefaultMaxProducts: "10"
       Akakce__DedupTtlSeconds: "21600"
       Akakce__ProductDetailEnqueueBatchSize: "10"
-      Akakce__ScrollPasses: "2"
-      Akakce__ScrollPauseMs: "200"
-      Akakce__ListingWaitTimeoutMs: "15000"
-      Akakce__DetailWaitTimeoutMs: "12000"
-      Akakce__DelayBetweenProductsMs: "400"
-      RabbitMq__BackgroundJobs__PrefetchCount: "1"
+      Akakce__ScrollPasses: "1"
+      Akakce__ScrollPauseMs: "100"
+      Akakce__ListingWaitTimeoutMs: "12000"
+      Akakce__DetailWaitTimeoutMs: "10000"
+      Akakce__DelayBetweenProductsMs: "0"
+      # ── RabbitMQ job işleme ─────────────────────────────────────────────
+      # CX33: 4 çekirdek → 6 iş aynı anda (Selenium bottleneck'i önlemek için)
+      RabbitMq__BackgroundJobs__PrefetchCount: "6"
+      # ── Telegram ───────────────────────────────────────────────────────
       Cimri__Telegram__BotToken: "8754349662:AAGQ7d4VOGav9lL6bx_kqzS2xboBxdHEmVg"
       Cimri__Telegram__ChatId: "-1003740852935"
       Cimri__Telegram__ShareProductCardsOnIngest: "true"
       Cimri__Telegram__MinDiscountPercentForTelegram: "5"
       Cimri__Telegram__TelegramCardDedupHours: "0"
-      # Akıllı yayın motoru
-      Cimri__Publish__MinDelayMinutes: "3"
-      Cimri__Publish__MaxDelayMinutes: "7"
+      # ── Cimri yayın motoru ──────────────────────────────────────────────
+      Cimri__Publish__MinDelayMinutes: "2"
+      Cimri__Publish__MaxDelayMinutes: "5"
       Cimri__Publish__MinDiscountPercent: "5"
       Cimri__Publish__QuietStartHour: "3"
       Cimri__Publish__QuietEndHour: "6"
-      # ── Robot 1: Cimri — 3 URL AYNI ANDA taranır ───────────────────────────
+      # ── Robot 1: Cimri — 3 URL AYNI ANDA (CX33: 20 sayfa × 3 URL) ─────
       Cimri__AutoSync__Enabled: "true"
       Cimri__AutoSync__IntervalHours: "2"
-      Cimri__AutoSync__CategoryIntervalMinutes: "30"
+      Cimri__AutoSync__CategoryIntervalMinutes: "20"
       Cimri__AutoSync__RunOnStart: "true"
-      Cimri__AutoSync__MaxPages: "15"
-      Cimri__AutoSync__MaxProducts: "1000"
+      Cimri__AutoSync__MaxPages: "20"
+      Cimri__AutoSync__MaxProducts: "2000"
       Cimri__AutoSync__CategoryUrls__0: "https://www.cimri.com/indirimli-urunler?sort=new%2Cdesc"
       Cimri__AutoSync__CategoryUrls__1: "https://www.cimri.com/indirimli-urunler?sort=discount%2Cdesc"
       Cimri__AutoSync__CategoryUrls__2: "https://www.cimri.com/indirimli-urunler"
-      # ── Robot 2: Cimri fiyat izleme ─────────────────────────────────────────
+      # ── Robot 2: Cimri fiyat izleme ─────────────────────────────────────
       Cimri__PriceWatch__Enabled: "true"
-      Cimri__PriceWatch__IntervalMinutes: "120"
+      Cimri__PriceWatch__IntervalMinutes: "60"
       Cimri__PriceWatch__RunOnStart: "false"
-      Cimri__PriceWatch__ProductAgeDays: "2"
-      Cimri__PriceWatch__ResyncAfterMinutes: "90"
-      Cimri__PriceWatch__MaxProductsPerRun: "200"
-      # ── Robot 1: Akakçe — 8 URL AYNI ANDA taranır (fiyati-dusen, kategori bazlı) ─────────
+      Cimri__PriceWatch__ProductAgeDays: "3"
+      Cimri__PriceWatch__ResyncAfterMinutes: "50"
+      Cimri__PriceWatch__MaxProductsPerRun: "300"
+      # ── Robot 1: Akakçe — fark-atan-fiyatlar (CX33: 15 sayfa) ──────────
       Akakce__AutoSync__Enabled: "true"
       Akakce__AutoSync__IntervalHours: "2"
-      Akakce__AutoSync__CategoryIntervalMinutes: "30"
+      Akakce__AutoSync__CategoryIntervalMinutes: "20"
       Akakce__AutoSync__RunOnStart: "true"
-      Akakce__AutoSync__MaxPages: "10"
-      Akakce__AutoSync__MaxProducts: "500"
+      Akakce__AutoSync__MaxPages: "15"
+      Akakce__AutoSync__MaxProducts: "1000"
       Akakce__AutoSync__CategoryUrls__0: "https://www.akakce.com/fark-atan-fiyatlar/"
-      # ── Robot 2: Akakçe fiyat izleme ─────────────────────────────────────────
+      # ── Robot 2: Akakçe fiyat izleme ─────────────────────────────────────
       Akakce__PriceWatch__Enabled: "true"
-      Akakce__PriceWatch__IntervalMinutes: "120"
+      Akakce__PriceWatch__IntervalMinutes: "60"
       Akakce__PriceWatch__RunOnStart: "false"
-      Akakce__PriceWatch__ProductAgeDays: "2"
-      Akakce__PriceWatch__ResyncAfterMinutes: "90"
-      Akakce__PriceWatch__MaxProductsPerRun: "200"
-      # RabbitMQ bağlantı sağlamlığı
-      RabbitMq__Connections__Default__RequestedHeartbeat: "60"
-      # Akakçe yayın motoru
-      Akakce__Publish__MinDelayMinutes: "3"
-      Akakce__Publish__MaxDelayMinutes: "7"
+      Akakce__PriceWatch__ProductAgeDays: "3"
+      Akakce__PriceWatch__ResyncAfterMinutes: "50"
+      Akakce__PriceWatch__MaxProductsPerRun: "300"
+      # ── Akakçe yayın motoru ─────────────────────────────────────────────
+      Akakce__Publish__MinDelayMinutes: "2"
+      Akakce__Publish__MaxDelayMinutes: "5"
       Akakce__Publish__MinDiscountPercent: "5"
       Akakce__Publish__QuietStartHour: "3"
       Akakce__Publish__QuietEndHour: "6"

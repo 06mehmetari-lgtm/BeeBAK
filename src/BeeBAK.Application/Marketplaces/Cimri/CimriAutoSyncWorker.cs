@@ -31,7 +31,8 @@ public class CimriAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
 {
     private const string MutexKey          = "cimri:autosync:mutex";
     private const string CooldownKeyPrefix = "beebak:cimri:url:cd:";
-    private static readonly TimeSpan StuckRunThreshold = TimeSpan.FromMinutes(90);
+    private const string ForceResyncKey    = "beebak:system:force-resync";
+    private static readonly TimeSpan StuckRunThreshold = TimeSpan.FromMinutes(20);
 
     public CimriAutoSyncWorker(
         AbpAsyncTimer timer,
@@ -114,22 +115,39 @@ public class CimriAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
         var jobManager    = sp.GetRequiredService<IBackgroundJobManager>();
         var eventLogger   = sp.GetRequiredService<IScrapeRunEventLogger>();
 
+        // Watchdog force-resync flag'ini kontrol et
+        bool forceResync = false;
+        try
+        {
+            var fr = await cache.GetAsync(ForceResyncKey);
+            if (fr != null)
+            {
+                forceResync = true;
+                await cache.RemoveAsync(ForceResyncKey);
+                logger.LogWarning("CimriAutoSync: force-resync flag bulundu — tüm cooldown'lar atlanıyor.");
+            }
+        }
+        catch { }
+
         int enqueued = 0;
         foreach (var url in allUrls)
         {
             var cdKey = CooldownKeyPrefix + GetHash(url);
 
-            // Cooldown aktifse bu URL'yi atla
-            try
+            // Cooldown aktifse bu URL'yi atla (force-resync varsa atla)
+            if (!forceResync)
             {
-                var cd = await cache.GetAsync(cdKey);
-                if (cd != null)
+                try
                 {
-                    logger.LogDebug("CimriAutoSync: {Url} cooldown'da — atlanıyor.", url);
-                    continue;
+                    var cd = await cache.GetAsync(cdKey);
+                    if (cd != null)
+                    {
+                        logger.LogDebug("CimriAutoSync: {Url} cooldown'da — atlanıyor.", url);
+                        continue;
+                    }
                 }
+                catch { /* Redis erişilemezse yine de devam et */ }
             }
-            catch { /* Redis erişilemezse yine de devam et */ }
 
             // Cooldown'u hemen kaydet (çift kuyruğa almayı önle)
             try
