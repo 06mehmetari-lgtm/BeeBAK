@@ -156,7 +156,7 @@ services:
       Cimri__DefaultMaxProducts: "10"
       Akakce__BaseUrl: "https://www.akakce.com"
       Akakce__AllowedAkakceHostSuffix: "akakce.com"
-      Akakce__ListingPageUrl: "https://www.akakce.com/fark-atan-fiyatlar/"
+      Akakce__ListingPageUrl: "https://www.akakce.com/fiyati-dusen-urunler/?s=3"
       Akakce__SeleniumGridUrl: "http://selenium-hub:4444/wd/hub"
       Akakce__SeleniumHeadless: "true"
       Akakce__BlockImages: "true"
@@ -246,7 +246,7 @@ services:
       # ── Akakce Selenium ayarları (CX33 hızlı) ──────────────────────────
       Akakce__BaseUrl: "https://www.akakce.com"
       Akakce__AllowedAkakceHostSuffix: "akakce.com"
-      Akakce__ListingPageUrl: "https://www.akakce.com/fark-atan-fiyatlar/"
+      Akakce__ListingPageUrl: "https://www.akakce.com/fiyati-dusen-urunler/?s=3"
       Akakce__SeleniumGridUrl: "http://selenium-hub:4444/wd/hub"
       Akakce__SeleniumHeadless: "true"
       Akakce__SeleniumCommandTimeoutMs: "90000"
@@ -301,7 +301,14 @@ services:
       Akakce__AutoSync__RunOnStart: "true"
       Akakce__AutoSync__MaxPages: "15"
       Akakce__AutoSync__MaxProducts: "1000"
-      Akakce__AutoSync__CategoryUrls__0: "https://www.akakce.com/fark-atan-fiyatlar/"
+      # fark-atan-fiyatlar: farklı HTML yapısı — li[data-pr] yok, parse edilemiyor
+      # fiyati-dusen-urunler: test edilmiş, çalışıyor
+      Akakce__AutoSync__CategoryUrls__0: "https://www.akakce.com/fiyati-dusen-urunler/?s=3"
+      Akakce__AutoSync__CategoryUrls__1: "https://www.akakce.com/fiyati-dusen-urunler/?c=1&s=3"
+      Akakce__AutoSync__CategoryUrls__2: "https://www.akakce.com/fiyati-dusen-urunler/?c=2&s=3"
+      Akakce__AutoSync__CategoryUrls__3: "https://www.akakce.com/fiyati-dusen-urunler/?c=4&s=3"
+      Akakce__AutoSync__CategoryUrls__4: "https://www.akakce.com/fiyati-dusen-urunler/?c=9&s=3"
+      Akakce__AutoSync__CategoryUrls__5: "https://www.akakce.com/fiyati-dusen-urunler/?c=7&s=3"
       # ── Robot 2: Akakçe fiyat izleme ─────────────────────────────────────
       Akakce__PriceWatch__Enabled: "true"
       Akakce__PriceWatch__IntervalMinutes: "60"
