@@ -50,8 +50,9 @@ services:
     container_name: beebak-selenium-hub
     restart: always
     environment:
-      # CX33 (4 çekirdek): 4 node × 3 session = 12 eş zamanlı Selenium oturumu
-      SE_NODE_MAX_SESSIONS: "12"
+      # CX33 (4 vCPU, 8GB): 3 node × 2 session = 6 eş zamanlı Selenium oturumu
+      # 12 paralel Chrome 4 vCPU'yu ezer — 6 paralel ideal denge noktası
+      SE_NODE_MAX_SESSIONS: "6"
       GRID_NEW_SESSION_WAIT_TIMEOUT: "60000"
       GRID_BROWSER_TIMEOUT: "180"
       GRID_TIMEOUT: "300"
@@ -63,7 +64,7 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: 384M
+          memory: 256M
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:4444/wd/hub/status || exit 1"]
       interval: 10s
@@ -82,18 +83,19 @@ services:
       SE_EVENT_BUS_HOST: selenium-hub
       SE_EVENT_BUS_PUBLISH_PORT: "4442"
       SE_EVENT_BUS_SUBSCRIBE_PORT: "4443"
-      SE_NODE_MAX_SESSIONS: "3"
+      SE_NODE_MAX_SESSIONS: "2"
       SE_NODE_OVERRIDE_MAX_SESSIONS: "true"
       SE_NODE_SESSION_TIMEOUT: "180"
       SE_VNC_NO_PASSWORD: "1"
       SE_OPTS: "--detect-drivers true"
     deploy:
-      # CX33: 4 node × 3 session = 12 eş zamanlı Selenium oturumu
-      replicas: 4
+      # CX33: 3 node × 2 session = 6 eş zamanlı Selenium oturumu
+      # Her Chrome ~400-600MB → 3 node × 2 session = maks ~1.8GB Chrome RAM
+      replicas: 3
       resources:
         limits:
-          cpus: "0.8"
-          memory: 700M
+          cpus: "0.9"
+          memory: 650M
 
   dbmigrator:
     build:
@@ -195,8 +197,8 @@ services:
       replicas: 1
       resources:
         limits:
-          # CX33: 8GB RAM → worker için 1.5GB yeterli
-          memory: 1536M
+          # CX33: 8GB RAM — worker için 1GB yeterli (Chrome node'lara yer bırak)
+          memory: 1024M
     depends_on:
       postgres:
         condition: service_healthy
