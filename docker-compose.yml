@@ -305,11 +305,11 @@ services:
       Cimri__Publish__MinDiscountPercent: "5"
       Cimri__Publish__QuietStartHour: "3"
       Cimri__Publish__QuietEndHour: "6"
-      # ── Robot 1: Cimri — FlareSolverr ile Cloudflare bypass ──────────────
-      Cimri__AutoSync__Enabled: "true"
-      Cimri__AutoSync__RunOnStart: "true"
-      # ── Robot 2: Cimri fiyat izleme ──────────────────────────────────────
-      Cimri__PriceWatch__Enabled: "true"
+      # ── Robot 1: Cimri — KAPALI (Contabo IP datacenter → Cloudflare IP bloğu, FlareSolverr da geçemiyor)
+      Cimri__AutoSync__Enabled: "false"
+      Cimri__AutoSync__RunOnStart: "false"
+      # ── Robot 2: Cimri fiyat izleme — KAPALI
+      Cimri__PriceWatch__Enabled: "false"
       # ── Robot 1: Akakçe — fark-atan-fiyatlar (CX33: 15 sayfa) ──────────
       Akakce__AutoSync__Enabled: "true"
       Akakce__AutoSync__IntervalHours: "2"
