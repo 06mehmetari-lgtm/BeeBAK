@@ -15,6 +15,12 @@ public class AkakceSeleniumPageFetcher : ITransientDependency
 {
     private readonly ILogger<AkakceSeleniumPageFetcher> _logger;
 
+    // FlareSolverr'a paralel istek göndermeyi önler — tek seferlik cookie alınır.
+    private static readonly System.Threading.SemaphoreSlim _flareSolverrSem = new(1, 1);
+    private static string? _cachedCookieHeader;
+    private static DateTime _cookieCachedAt = DateTime.MinValue;
+    private static readonly TimeSpan _cookieTtl = TimeSpan.FromMinutes(20);
+
     public AkakceSeleniumPageFetcher(ILogger<AkakceSeleniumPageFetcher> logger)
     {
         _logger = logger;
@@ -236,77 +242,115 @@ public class AkakceSeleniumPageFetcher : ITransientDependency
 
     /// <summary>
     /// FlareSolverr container API'sini çağırır; dönen Cloudflare clearance cookie'lerini
-    /// mevcut Selenium oturumuna enjekte eder. Hata durumunda scraping yine de devam eder.
+    /// mevcut Selenium oturumuna enjekte eder. 20 dakika boyunca cache'lenir (paralel session başına
+    /// tek bir FlareSolverr Chrome örneği açılır). Hata durumunda scraping yine de devam eder.
     /// </summary>
     private void TryInjectFlareSolverrCookies(IWebDriver driver, string flareSolverrUrl, string targetUrl, string domain)
     {
         try
         {
-            using var httpClient = new System.Net.Http.HttpClient
+            // Cache geçerliyse doğrudan inject et, FlareSolverr'a gitme.
+            List<(string name, string value, string cookieDomain, string path)>? cookieList = null;
+
+            _flareSolverrSem.Wait();
+            try
             {
-                Timeout = TimeSpan.FromSeconds(90)
-            };
+                if (_cachedCookieHeader != null && DateTime.UtcNow - _cookieCachedAt < _cookieTtl)
+                {
+                    _logger.LogDebug("Akakce FlareSolverr: cache'ten cookie kullanılıyor (age={Age:0}s)",
+                        (DateTime.UtcNow - _cookieCachedAt).TotalSeconds);
+                    InjectCookiesFromCachedHeader(driver, _cachedCookieHeader!, domain);
+                    return;
+                }
 
-            var payload = System.Text.Json.JsonSerializer.Serialize(new
-            {
-                cmd = "request.get",
-                url = targetUrl,
-                maxTimeout = 60000
-            });
-            var requestContent = new System.Net.Http.StringContent(
-                payload, System.Text.Encoding.UTF8, "application/json");
+                // Cache yok veya süresi dolmuş — FlareSolverr'a tek istek at.
+                using var httpClient = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(120) };
 
-            _logger.LogInformation("Akakce FlareSolverr: {Url} için Cloudflare cookie alınıyor...", targetUrl);
+                var payload = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    cmd = "request.get",
+                    url = targetUrl,
+                    maxTimeout = 90000
+                });
+                var requestContent = new System.Net.Http.StringContent(
+                    payload, System.Text.Encoding.UTF8, "application/json");
 
-            var response = httpClient
-                .PostAsync(flareSolverrUrl.TrimEnd('/') + "/v1", requestContent)
-                .GetAwaiter().GetResult();
+                _logger.LogInformation("Akakce FlareSolverr: {Url} için Cloudflare cookie alınıyor...", targetUrl);
 
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning("Akakce FlareSolverr: HTTP {Status} — cookie alınamadı, standart scraping devam ediyor",
-                    (int)response.StatusCode);
-                return;
-            }
+                var response = httpClient
+                    .PostAsync(flareSolverrUrl.TrimEnd('/') + "/v1", requestContent)
+                    .GetAwaiter().GetResult();
 
-            var body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-            using var doc = System.Text.Json.JsonDocument.Parse(body);
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("Akakce FlareSolverr: HTTP {Status} — cookie alınamadı, standart scraping devam ediyor",
+                        (int)response.StatusCode);
+                    return;
+                }
 
-            if (!doc.RootElement.TryGetProperty("solution", out var solution))
-            {
-                _logger.LogWarning("Akakce FlareSolverr: yanıtta 'solution' alanı yok");
-                return;
-            }
+                var body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                using var doc = System.Text.Json.JsonDocument.Parse(body);
 
-            if (!solution.TryGetProperty("cookies", out var cookiesEl))
-            {
-                _logger.LogWarning("Akakce FlareSolverr: yanıtta 'cookies' alanı yok");
-                return;
-            }
+                if (!doc.RootElement.TryGetProperty("solution", out var solution)
+                    || !solution.TryGetProperty("cookies", out var cookiesEl))
+                {
+                    _logger.LogWarning("Akakce FlareSolverr: yanıtta cookie alanı yok");
+                    return;
+                }
 
-            var injected = 0;
-            foreach (var c in cookiesEl.EnumerateArray())
-            {
-                try
+                cookieList = new List<(string, string, string, string)>();
+                foreach (var c in cookiesEl.EnumerateArray())
                 {
                     var name  = c.GetProperty("name").GetString() ?? "";
                     var value = c.GetProperty("value").GetString() ?? "";
-                    var cookieDomain = c.TryGetProperty("domain", out var d) ? (d.GetString() ?? domain) : domain;
+                    var cd    = c.TryGetProperty("domain", out var d) ? (d.GetString() ?? domain) : domain;
                     var path  = c.TryGetProperty("path", out var p) ? (p.GetString() ?? "/") : "/";
-
-                    if (string.IsNullOrEmpty(name)) continue;
-
-                    driver.Manage().Cookies.AddCookie(new Cookie(name, value, cookieDomain, path, null));
-                    injected++;
+                    if (!string.IsNullOrEmpty(name))
+                        cookieList.Add((name, value, cd, path));
                 }
-                catch { /* geçersiz cookie formatını atla */ }
+
+                // Cache güncelle
+                _cachedCookieHeader = string.Join(";", cookieList.Select(c => $"{c.name}={c.value}"));
+                _cookieCachedAt = DateTime.UtcNow;
+                _logger.LogInformation("Akakce FlareSolverr: {Count} cookie alındı ve cache'lendi ✓", cookieList.Count);
+            }
+            finally
+            {
+                _flareSolverrSem.Release();
             }
 
-            _logger.LogInformation("Akakce FlareSolverr: {Count} Cloudflare cookie enjekte edildi ✓", injected);
+            if (cookieList != null)
+            {
+                var injected = 0;
+                foreach (var (name, value, cd, path) in cookieList)
+                {
+                    try
+                    {
+                        driver.Manage().Cookies.AddCookie(new Cookie(name, value, cd, path, null));
+                        injected++;
+                    }
+                    catch { /* geçersiz cookie */ }
+                }
+                _logger.LogInformation("Akakce FlareSolverr: {Count} cookie Selenium'a enjekte edildi ✓", injected);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Akakce FlareSolverr: cookie alma hatası — standart scraping devam ediyor");
+        }
+    }
+
+    private static void InjectCookiesFromCachedHeader(IWebDriver driver, string cookieHeader, string domain)
+    {
+        foreach (var part in cookieHeader.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var eq = part.IndexOf('=');
+            if (eq <= 0) continue;
+            var name  = part[..eq].Trim();
+            var value = part[(eq + 1)..].Trim();
+            if (string.IsNullOrEmpty(name)) continue;
+            try { driver.Manage().Cookies.AddCookie(new Cookie(name, value, domain, "/", null)); }
+            catch { /* ignore */ }
         }
     }
 

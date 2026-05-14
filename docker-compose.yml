@@ -49,6 +49,7 @@ services:
     image: ghcr.io/flaresolverr/flaresolverr:latest
     container_name: beebak-flaresolverr
     restart: always
+    shm_size: 1g
     environment:
       LOG_LEVEL: "info"
       TZ: "Europe/Istanbul"
@@ -57,7 +58,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1500M
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8191/health || exit 1"]
       interval: 15s
