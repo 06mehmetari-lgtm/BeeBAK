@@ -15,8 +15,10 @@ public class AkakceSeleniumPageFetcher : ITransientDependency
 {
     private readonly ILogger<AkakceSeleniumPageFetcher> _logger;
 
-    // FlareSolverr sayfa fetch — sıralı (session tabanlı, Cloudflare bir kez çözülür).
+    // FlareSolverr listing fetch — sıralı (session tabanlı, Cloudflare bir kez çözülür).
     private static readonly System.Threading.SemaphoreSlim _flareSolverrPageSem = new(1, 1);
+    // FlareSolverr detail fetch — en fazla 2 eş zamanlı (PrefetchCount=6 olsa bile)
+    private static readonly System.Threading.SemaphoreSlim _flareSolverrDetailSem = new(2, 2);
     // FlareSolverr cookie inject için eski semaphore (fallback path)
     private static readonly System.Threading.SemaphoreSlim _flareSolverrSem = new(1, 1);
     private static string? _cachedCookieHeader;
@@ -123,12 +125,17 @@ public class AkakceSeleniumPageFetcher : ITransientDependency
         }
     }
 
-    public Task<string?> TryGetProductDetailHtmlAsync(
+    public async Task<string?> TryGetProductDetailHtmlAsync(
         string absoluteProductUrl,
         AkakceClientOptions options,
         CancellationToken cancellationToken = default)
     {
-        return Task.Run(
+        if (!string.IsNullOrWhiteSpace(options.FlareSolverrUrl))
+        {
+            return await FetchDetailViaFlareSolverrAsync(absoluteProductUrl, options, cancellationToken);
+        }
+
+        return await Task.Run(
             () => RunWithDriver(
                 options,
                 driver =>
@@ -142,6 +149,65 @@ public class AkakceSeleniumPageFetcher : ITransientDependency
                 },
                 cancellationToken),
             cancellationToken);
+    }
+
+    /// <summary>
+    /// Ürün detay sayfasını FlareSolverr üzerinden çeker.
+    /// "akakce-detail" session'ı listing'ten bağımsız; en fazla 2 eş zamanlı istek.
+    /// </summary>
+    private async Task<string?> FetchDetailViaFlareSolverrAsync(
+        string absoluteUrl,
+        AkakceClientOptions options,
+        CancellationToken cancellationToken)
+    {
+        await _flareSolverrDetailSem.WaitAsync(cancellationToken);
+        try
+        {
+            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(130) };
+
+            var payload = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                cmd = "request.get",
+                url = absoluteUrl,
+                maxTimeout = 90000,
+                session = "akakce-detail"
+            });
+
+            _logger.LogDebug("Akakce FlareSolverr detail: {Url}", absoluteUrl);
+
+            var resp = await http.PostAsync(
+                options.FlareSolverrUrl!.TrimEnd('/') + "/v1",
+                new System.Net.Http.StringContent(payload, System.Text.Encoding.UTF8, "application/json"),
+                cancellationToken);
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Akakce FlareSolverr detail HTTP {Status} → {Url}", (int)resp.StatusCode, absoluteUrl);
+                return null;
+            }
+
+            var body = await resp.Content.ReadAsStringAsync(cancellationToken);
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+
+            if (!doc.RootElement.TryGetProperty("solution", out var solution))
+            {
+                _logger.LogWarning("Akakce FlareSolverr detail: 'solution' yok → {Url}", absoluteUrl);
+                return null;
+            }
+
+            var html = solution.TryGetProperty("response", out var r) ? r.GetString() : null;
+            _logger.LogDebug("Akakce FlareSolverr detail: {HtmlLen} karakter → {Url}", html?.Length ?? 0, absoluteUrl);
+            return html;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Akakce FlareSolverr detail hatası → {Url}", absoluteUrl);
+            return null;
+        }
+        finally
+        {
+            _flareSolverrDetailSem.Release();
+        }
     }
 
     private T? RunWithDriver<T>(
