@@ -923,6 +923,12 @@ public class CimriSeleniumPageFetcher : ITransientDependency
         chromeOptions.AddArgument($"--user-agent={options.UserAgent}");
         chromeOptions.AddArgument("--window-size=1920,1080");
 
+        // Proxy (örn. Tor SOCKS5 — Türk çıkış noktası için)
+        if (!string.IsNullOrWhiteSpace(options.ProxyUrl))
+        {
+            chromeOptions.AddArgument($"--proxy-server={options.ProxyUrl}");
+        }
+
         ApplyContentBlockingPrefs(chromeOptions, options);
 
         return chromeOptions;

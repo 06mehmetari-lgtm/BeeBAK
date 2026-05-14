@@ -97,6 +97,12 @@ public class CimriClientOptions
     /// </summary>
     public string? FlareSolverrUrl { get; set; }
 
+    /// <summary>
+    /// HTTP veya SOCKS5 proxy URL (örn. socks5://tor:9050 veya http://proxy:8118).
+    /// Dolu ise Chrome bu proxy üzerinden bağlanır — Cloudflare IP engeli için Türk Tor çıkış noktası kullanılabilir.
+    /// </summary>
+    public string? ProxyUrl { get; set; }
+
     /// <summary>Görsel/font/CSS isteklerini engellemek scraping'i ciddi şekilde hızlandırır.</summary>
     public bool BlockImages { get; set; } = true;
     public bool BlockFonts { get; set; } = true;

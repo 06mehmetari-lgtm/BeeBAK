@@ -1,0 +1,23 @@
+FROM debian:bookworm-slim
+
+# Tor kur
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends tor netcat-traditional curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Sadece Türk çıkış noktaları kullan
+RUN printf '\
+SocksPort 0.0.0.0:9050\n\
+ExitNodes {tr}\n\
+StrictNodes 1\n\
+MaxCircuitDirtiness 600\n\
+NewCircuitPeriod 120\n\
+CircuitBuildTimeout 30\n\
+Log notice stdout\n\
+' > /etc/tor/torrc
+
+EXPOSE 9050
+
+USER debian-tor
+
+CMD ["tor", "-f", "/etc/tor/torrc"]
