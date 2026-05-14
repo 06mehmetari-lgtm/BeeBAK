@@ -15,7 +15,9 @@ public class AkakceSeleniumPageFetcher : ITransientDependency
 {
     private readonly ILogger<AkakceSeleniumPageFetcher> _logger;
 
-    // FlareSolverr'a paralel istek göndermeyi önler — tek seferlik cookie alınır.
+    // FlareSolverr sayfa fetch — sıralı (session tabanlı, Cloudflare bir kez çözülür).
+    private static readonly System.Threading.SemaphoreSlim _flareSolverrPageSem = new(1, 1);
+    // FlareSolverr cookie inject için eski semaphore (fallback path)
     private static readonly System.Threading.SemaphoreSlim _flareSolverrSem = new(1, 1);
     private static string? _cachedCookieHeader;
     private static DateTime _cookieCachedAt = DateTime.MinValue;
@@ -26,12 +28,20 @@ public class AkakceSeleniumPageFetcher : ITransientDependency
         _logger = logger;
     }
 
-    public Task<string?> TryGetListingHtmlAsync(
+    public async Task<string?> TryGetListingHtmlAsync(
         string absoluteUrl,
         AkakceClientOptions options,
         CancellationToken cancellationToken = default)
     {
-        return Task.Run(
+        // FlareSolverr yapılandırılmışsa sayfayı doğrudan FlareSolverr üzerinden çek.
+        // cf_clearance FlareSolverr'ın kendi Chrome oturumuna bağlı olduğundan cookie inject
+        // çalışmıyor; bunun yerine FlareSolverr'ın kendi tarayıcısıyla rendered HTML alıyoruz.
+        if (!string.IsNullOrWhiteSpace(options.FlareSolverrUrl))
+        {
+            return await FetchListingViaFlareSolverrAsync(absoluteUrl, options, cancellationToken);
+        }
+
+        return await Task.Run(
             () => RunWithDriver(
                 options,
                 driver =>
@@ -45,6 +55,72 @@ public class AkakceSeleniumPageFetcher : ITransientDependency
                 },
                 cancellationToken),
             cancellationToken);
+    }
+
+    /// <summary>
+    /// FlareSolverr'ın kendi Chrome oturumunu kullanarak listing sayfasını çeker.
+    /// Aynı "akakce-listing" session ID'si ile Cloudflare sadece bir kez çözülür;
+    /// sonraki sayfalar session cookie'lerini yeniden kullanarak ~5-15 s'de döner.
+    /// Sıralı erişim (SemaphoreSlim(1,1)) FlareSolverr'ı paralel isteklerden korur.
+    /// </summary>
+    private async Task<string?> FetchListingViaFlareSolverrAsync(
+        string absoluteUrl,
+        AkakceClientOptions options,
+        CancellationToken cancellationToken)
+    {
+        await _flareSolverrPageSem.WaitAsync(cancellationToken);
+        try
+        {
+            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(130) };
+
+            var payload = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                cmd = "request.get",
+                url = absoluteUrl,
+                maxTimeout = 90000,
+                session = "akakce-listing"
+            });
+
+            _logger.LogInformation("Akakce FlareSolverr: sayfa alınıyor → {Url}", absoluteUrl);
+
+            var resp = await http.PostAsync(
+                options.FlareSolverrUrl!.TrimEnd('/') + "/v1",
+                new System.Net.Http.StringContent(payload, System.Text.Encoding.UTF8, "application/json"),
+                cancellationToken);
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Akakce FlareSolverr sayfa HTTP {Status} → {Url}", (int)resp.StatusCode, absoluteUrl);
+                return null;
+            }
+
+            var body = await resp.Content.ReadAsStringAsync(cancellationToken);
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+
+            if (!doc.RootElement.TryGetProperty("solution", out var solution))
+            {
+                _logger.LogWarning("Akakce FlareSolverr: 'solution' alanı yok → {Url}", absoluteUrl);
+                return null;
+            }
+
+            var httpStatus = solution.TryGetProperty("status", out var st) ? st.GetInt32() : 0;
+            var html = solution.TryGetProperty("response", out var r) ? r.GetString() : null;
+
+            _logger.LogInformation(
+                "Akakce FlareSolverr: HTTP {HttpStatus}, {HtmlLen} karakter alındı → {Url}",
+                httpStatus, html?.Length ?? 0, absoluteUrl);
+
+            return html;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Akakce FlareSolverr sayfa hatası → {Url}", absoluteUrl);
+            return null;
+        }
+        finally
+        {
+            _flareSolverrPageSem.Release();
+        }
     }
 
     public Task<string?> TryGetProductDetailHtmlAsync(
