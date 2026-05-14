@@ -90,6 +90,13 @@ public class CimriClientOptions
     /// <summary>Selenium grid komut zaman aşımı (ms).</summary>
     public int SeleniumCommandTimeoutMs { get; set; } = 120_000;
 
+    /// <summary>
+    /// FlareSolverr container URL (örn. http://flaresolverr:8191).
+    /// Dolu ise Cloudflare challenge aşılırken FlareSolverr'dan alınan clearance cookie'leri
+    /// Selenium oturumuna enjekte edilir. Boşsa FlareSolverr kullanılmaz.
+    /// </summary>
+    public string? FlareSolverrUrl { get; set; }
+
     /// <summary>Görsel/font/CSS isteklerini engellemek scraping'i ciddi şekilde hızlandırır.</summary>
     public bool BlockImages { get; set; } = true;
     public bool BlockFonts { get; set; } = true;
