@@ -33,6 +33,18 @@ public class AkakceClientOptions
     public int ProductDetailEnqueueBatchSize { get; set; } = 20;
     public List<string>? ChromiumExtraArgs { get; set; }
 
+    /// <summary>
+    /// FlareSolverr container URL (örn. http://flaresolverr:8191).
+    /// Dolu ise Cloudflare JS challenge aşılırken clearance cookie'leri Selenium oturumuna enjekte edilir.
+    /// </summary>
+    public string? FlareSolverrUrl { get; set; }
+
+    /// <summary>
+    /// HTTP veya SOCKS5 proxy URL (örn. http://proxy:8118).
+    /// Dolu ise Chrome bu proxy üzerinden bağlanır.
+    /// </summary>
+    public string? ProxyUrl { get; set; }
+
     public AkakceAutoSyncOptions AutoSync { get; set; } = new();
     public AkakcePriceWatchOptions PriceWatch { get; set; } = new();
     public AkakcePublishOptions Publish { get; set; } = new();

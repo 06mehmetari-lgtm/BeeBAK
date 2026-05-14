@@ -45,6 +45,26 @@ services:
       timeout: 5s
       retries: 20
 
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: beebak-flaresolverr
+    restart: always
+    environment:
+      LOG_LEVEL: "info"
+      TZ: "Europe/Istanbul"
+    ports:
+      - "8191:8191"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8191/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
   selenium-hub:
     image: selenium/hub:4.27.0
     container_name: beebak-selenium-hub
@@ -186,6 +206,8 @@ services:
         condition: service_healthy
       selenium-hub:
         condition: service_healthy
+      flaresolverr:
+        condition: service_healthy
       dbmigrator:
         condition: service_completed_successfully
     environment:
@@ -204,8 +226,10 @@ services:
       Akakce__BaseUrl: "https://www.akakce.com"
       Akakce__AllowedAkakceHostSuffix: "akakce.com"
       Akakce__SeleniumGridUrl: "http://selenium-hub:4444/wd/hub"
+      Akakce__FlareSolverrUrl: "http://flaresolverr:8191"
       Akakce__SeleniumHeadless: "true"
       Akakce__SeleniumCommandTimeoutMs: "90000"
+      Akakce__UserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
       Akakce__BlockImages: "true"
       Akakce__BlockFonts: "true"
       Akakce__UseQueue: "true"
