@@ -215,7 +215,7 @@ services:
       Akakce__ProductDetailEnqueueBatchSize: "10"
       Akakce__ScrollPasses: "1"
       Akakce__ScrollPauseMs: "100"
-      Akakce__ListingWaitTimeoutMs: "12000"
+      Akakce__ListingWaitTimeoutMs: "25000"
       Akakce__DetailWaitTimeoutMs: "10000"
       Akakce__DelayBetweenProductsMs: "0"
       # ── RabbitMQ iş işleme ───────────────────────────────────────────────
