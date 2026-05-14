@@ -45,54 +45,11 @@ services:
       timeout: 5s
       retries: 20
 
-  tor:
-    build:
-      context: .
-      dockerfile: Dockerfile.tor
-    container_name: beebak-tor
-    restart: always
-    deploy:
-      resources:
-        limits:
-          cpus: "0.3"
-          memory: 128M
-    healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 9050 || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 45s
-
-  flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
-    container_name: beebak-flaresolverr
-    restart: always
-    environment:
-      LOG_LEVEL: "info"
-      LOG_HTML: "false"
-      CAPTCHA_SOLVER: "none"
-      TZ: "Europe/Istanbul"
-    ports:
-      - "8191:8191"
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 512M
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8191/health || exit 1"]
-      interval: 20s
-      timeout: 10s
-      retries: 10
-      start_period: 30s
-
   selenium-hub:
     image: selenium/hub:4.27.0
     container_name: beebak-selenium-hub
     restart: always
     environment:
-      # CX33 (4 vCPU, 8GB): 2 node × 2 session = 4 eş zamanlı Selenium oturumu
-      # 6 paralel Chrome belleği doldurup çöküyordu — 4 paralel kararlı
       SE_NODE_MAX_SESSIONS: "4"
       GRID_NEW_SESSION_WAIT_TIMEOUT: "60000"
       GRID_BROWSER_TIMEOUT: "180"
@@ -130,8 +87,7 @@ services:
       SE_VNC_NO_PASSWORD: "1"
       SE_OPTS: "--detect-drivers true"
     deploy:
-      # CX33: 2 node × 2 session = 4 eş zamanlı Selenium oturumu
-      # Her Chrome ~400-600MB → 2 node × 2 session = maks ~1.2GB Chrome RAM
+      # 2 node × 2 session = 4 eş zamanlı Selenium — bellek güvenli
       replicas: 2
       resources:
         limits:
@@ -150,7 +106,6 @@ services:
         condition: service_healthy
     environment:
       ConnectionStrings__Default: "Host=postgres;Port=5432;Database=BeeBAK;Username=postgres;Password=11051994"
-      # ApplicationModule OpenIddict/Medallion distributed lock için gerekli (Redis yoksa IDistributedLockProvider çözülmez)
       Redis__Configuration: "redis:6379"
       Redis__InstanceName: "BeeBAK:"
       BackgroundJobs__IsJobExecutionEnabled: "false"
@@ -188,18 +143,8 @@ services:
       AuthServer__RequireHttpsMetadata: "false"
       AuthServer__UseDevelopmentCertificate: "true"
       App__HealthUiCheckUrl: "http://localhost:8080/health-status"
-      Cimri__BaseUrl: "https://www.cimri.com"
-      Cimri__AllowedCimriHostSuffix: "cimri.com"
-      Cimri__SeleniumGridUrl: "http://selenium-hub:4444/wd/hub"
-      Cimri__SeleniumHeadless: "true"
-      Cimri__BlockImages: "true"
-      Cimri__BlockFonts: "true"
-      Cimri__UseQueue: "true"
-      Cimri__DefaultMaxPages: "1"
-      Cimri__DefaultMaxProducts: "10"
       Akakce__BaseUrl: "https://www.akakce.com"
       Akakce__AllowedAkakceHostSuffix: "akakce.com"
-      Akakce__ListingPageUrl: "https://www.akakce.com/fiyati-dusen-urunler/?s=3"
       Akakce__SeleniumGridUrl: "http://selenium-hub:4444/wd/hub"
       Akakce__SeleniumHeadless: "true"
       Akakce__BlockImages: "true"
@@ -207,12 +152,6 @@ services:
       Akakce__UseQueue: "true"
       Akakce__DefaultMaxPages: "1"
       Akakce__DefaultMaxProducts: "10"
-      # Telegram (kart / bildirim); appsettings ile aynı — ortam değişkeni önceliklidir
-      Cimri__Telegram__BotToken: "8754349662:AAGQ7d4VOGav9lL6bx_kqzS2xboBxdHEmVg"
-      Cimri__Telegram__ChatId: "-1003740852935"
-      Cimri__Telegram__ShareProductCardsOnIngest: "true"
-      Cimri__Telegram__MinDiscountPercentForTelegram: "5"
-      Cimri__Telegram__TelegramCardDedupHours: "24"
     ports:
       - "44381:8080"
     volumes:
@@ -228,7 +167,6 @@ services:
       dockerfile: Dockerfile.worker
     restart: always
     healthcheck:
-      # Her 1 dakikada kontrol — 3 başarısız = yeniden başlat
       test: ["CMD-SHELL", "pgrep -f BeeBAK.WorkerHost || exit 1"]
       interval: 1m
       timeout: 10s
@@ -238,7 +176,6 @@ services:
       replicas: 1
       resources:
         limits:
-          # CX33: 8GB RAM — worker için 1GB yeterli (Chrome node'lara yer bırak)
           memory: 1024M
     depends_on:
       postgres:
@@ -248,10 +185,6 @@ services:
       rabbitmq:
         condition: service_healthy
       selenium-hub:
-        condition: service_healthy
-      flaresolverr:
-        condition: service_healthy
-      tor:
         condition: service_healthy
       dbmigrator:
         condition: service_completed_successfully
@@ -267,37 +200,9 @@ services:
       RabbitMq__Connections__Default__NetworkRecoveryInterval: "10"
       RabbitMq__Connections__Default__AutomaticRecoveryEnabled: "true"
       BackgroundJobs__IsJobExecutionEnabled: "true"
-      # ── Cimri Selenium ayarları (CX33 hızlı) ───────────────────────────
-      Cimri__BaseUrl: "https://www.cimri.com"
-      Cimri__AllowedCimriHostSuffix: "cimri.com"
-      Cimri__SeleniumGridUrl: "http://selenium-hub:4444/wd/hub"
-      Cimri__FlareSolverrUrl: "http://flaresolverr:8191"
-      Cimri__ProxyUrl: "socks5://tor:9050"
-      Cimri__SeleniumHeadless: "true"
-      Cimri__SeleniumCommandTimeoutMs: "180000"
-      Cimri__BlockImages: "true"
-      Cimri__BlockFonts: "true"
-      Cimri__UseQueue: "true"
-      Cimri__DefaultMaxPages: "1"
-      Cimri__DefaultMaxProducts: "10"
-      Cimri__DedupTtlSeconds: "21600"
-      Cimri__ScrollPasses: "1"
-      Cimri__ScrollPauseMs: "500"
-      # Tor üzerinden bağlantı yavaş — 30 sn bekle
-      Cimri__DetailWaitTimeoutMs: "30000"
-      Cimri__PageLoadTimeoutMs: "120000"
-      Cimri__ExpandOffersClickPauseMs: "300"
-      Cimri__LoadMoreClickPauseMs: "400"
-      Cimri__DelayBetweenProductsMs: "0"
-      Cimri__OfferResolveTimeoutMs: "3000"
-      Cimri__MaxOfferUrlsToResolveViaSelenium: "5"
-      Cimri__OfferUrlCacheTtlSeconds: "604800"
-      Cimri__RequireMerchantProductId: "false"
-      Cimri__SkipProductWithoutQualifiedOffers: "false"
-      # ── Akakce Selenium ayarları (CX33 hızlı) ──────────────────────────
+      # ── Akakce Selenium ──────────────────────────────────────────────────
       Akakce__BaseUrl: "https://www.akakce.com"
       Akakce__AllowedAkakceHostSuffix: "akakce.com"
-      Akakce__ListingPageUrl: "https://www.akakce.com/fiyati-dusen-urunler/?s=3"
       Akakce__SeleniumGridUrl: "http://selenium-hub:4444/wd/hub"
       Akakce__SeleniumHeadless: "true"
       Akakce__SeleniumCommandTimeoutMs: "90000"
@@ -313,47 +218,33 @@ services:
       Akakce__ListingWaitTimeoutMs: "12000"
       Akakce__DetailWaitTimeoutMs: "10000"
       Akakce__DelayBetweenProductsMs: "0"
-      # ── RabbitMQ job işleme ─────────────────────────────────────────────
-      # CX33: 4 çekirdek → 6 iş aynı anda (Selenium bottleneck'i önlemek için)
+      # ── RabbitMQ iş işleme ───────────────────────────────────────────────
       RabbitMq__BackgroundJobs__PrefetchCount: "6"
-      # ── Telegram ───────────────────────────────────────────────────────
-      Cimri__Telegram__BotToken: "8754349662:AAGQ7d4VOGav9lL6bx_kqzS2xboBxdHEmVg"
-      Cimri__Telegram__ChatId: "-1003740852935"
-      Cimri__Telegram__ShareProductCardsOnIngest: "true"
-      Cimri__Telegram__MinDiscountPercentForTelegram: "5"
-      Cimri__Telegram__TelegramCardDedupHours: "0"
-      # ── Cimri yayın motoru ──────────────────────────────────────────────
-      Cimri__Publish__MinDelayMinutes: "2"
-      Cimri__Publish__MaxDelayMinutes: "5"
-      Cimri__Publish__MinDiscountPercent: "5"
-      Cimri__Publish__QuietStartHour: "3"
-      Cimri__Publish__QuietEndHour: "6"
-      # ── Robot 1: Cimri — Tor Türk çıkış noktası üzerinden ─────────────────
-      Cimri__AutoSync__Enabled: "true"
-      Cimri__AutoSync__RunOnStart: "true"
-      # ── Robot 2: Cimri fiyat izleme ──────────────────────────────────────
-      Cimri__PriceWatch__Enabled: "true"
-      # ── Robot 1: Akakçe — fark-atan-fiyatlar (CX33: 15 sayfa) ──────────
+      # ── Telegram ────────────────────────────────────────────────────────
+      Akakce__Telegram__BotToken: "8754349662:AAGQ7d4VOGav9lL6bx_kqzS2xboBxdHEmVg"
+      Akakce__Telegram__ChatId: "-1003740852935"
+      Akakce__Telegram__ShareProductCardsOnIngest: "true"
+      Akakce__Telegram__MinDiscountPercentForTelegram: "5"
+      Akakce__Telegram__TelegramCardDedupHours: "0"
+      # ── Akakce AutoSync — 4 kategori sayfası ────────────────────────────
       Akakce__AutoSync__Enabled: "true"
       Akakce__AutoSync__IntervalHours: "2"
       Akakce__AutoSync__CategoryIntervalMinutes: "20"
       Akakce__AutoSync__RunOnStart: "true"
       Akakce__AutoSync__MaxPages: "8"
       Akakce__AutoSync__MaxProducts: "500"
-      # fark-atan-fiyatlar: farklı HTML yapısı — li[data-pr] yok, parse edilemiyor
-      # fiyati-dusen-urunler: test edilmiş, çalışıyor
-      # CX33: 3 URL × 8 sayfa = 24 paralel Selenium görevi max (3 aynı anda, bellek güvenli)
-      Akakce__AutoSync__CategoryUrls__0: "https://www.akakce.com/fiyati-dusen-urunler/?s=3"
-      Akakce__AutoSync__CategoryUrls__1: "https://www.akakce.com/fiyati-dusen-urunler/?c=1&s=3"
-      Akakce__AutoSync__CategoryUrls__2: "https://www.akakce.com/fiyati-dusen-urunler/?c=2&s=3"
-      # ── Robot 2: Akakçe fiyat izleme ─────────────────────────────────────
+      Akakce__AutoSync__CategoryUrls__0: "https://www.akakce.com/fark-atan-fiyatlar/"
+      Akakce__AutoSync__CategoryUrls__1: "https://www.akakce.com/son-alti-ayin-en-ucuz-fiyatli-urunleri/"
+      Akakce__AutoSync__CategoryUrls__2: "https://www.akakce.com/brosurlerde-en-iyi-fiyatlar/"
+      Akakce__AutoSync__CategoryUrls__3: "https://www.akakce.com/brosurlerden-daha-ucuz-fiyatlar/"
+      # ── Akakce PriceWatch ───────────────────────────────────────────────
       Akakce__PriceWatch__Enabled: "true"
       Akakce__PriceWatch__IntervalMinutes: "60"
       Akakce__PriceWatch__RunOnStart: "false"
       Akakce__PriceWatch__ProductAgeDays: "3"
       Akakce__PriceWatch__ResyncAfterMinutes: "50"
       Akakce__PriceWatch__MaxProductsPerRun: "300"
-      # ── Akakçe yayın motoru ─────────────────────────────────────────────
+      # ── Akakce Publish ──────────────────────────────────────────────────
       Akakce__Publish__MinDelayMinutes: "2"
       Akakce__Publish__MaxDelayMinutes: "5"
       Akakce__Publish__MinDiscountPercent: "5"
