@@ -50,9 +50,9 @@ services:
     container_name: beebak-selenium-hub
     restart: always
     environment:
-      # CX33 (4 vCPU, 8GB): 3 node × 2 session = 6 eş zamanlı Selenium oturumu
-      # 12 paralel Chrome 4 vCPU'yu ezer — 6 paralel ideal denge noktası
-      SE_NODE_MAX_SESSIONS: "6"
+      # CX33 (4 vCPU, 8GB): 2 node × 2 session = 4 eş zamanlı Selenium oturumu
+      # 6 paralel Chrome belleği doldurup çöküyordu — 4 paralel kararlı
+      SE_NODE_MAX_SESSIONS: "4"
       GRID_NEW_SESSION_WAIT_TIMEOUT: "60000"
       GRID_BROWSER_TIMEOUT: "180"
       GRID_TIMEOUT: "300"
@@ -89,13 +89,13 @@ services:
       SE_VNC_NO_PASSWORD: "1"
       SE_OPTS: "--detect-drivers true"
     deploy:
-      # CX33: 3 node × 2 session = 6 eş zamanlı Selenium oturumu
-      # Her Chrome ~400-600MB → 3 node × 2 session = maks ~1.8GB Chrome RAM
-      replicas: 3
+      # CX33: 2 node × 2 session = 4 eş zamanlı Selenium oturumu
+      # Her Chrome ~400-600MB → 2 node × 2 session = maks ~1.2GB Chrome RAM
+      replicas: 2
       resources:
         limits:
-          cpus: "0.9"
-          memory: 650M
+          cpus: "1.0"
+          memory: 700M
 
   dbmigrator:
     build:
@@ -279,38 +279,24 @@ services:
       Cimri__Publish__MinDiscountPercent: "5"
       Cimri__Publish__QuietStartHour: "3"
       Cimri__Publish__QuietEndHour: "6"
-      # ── Robot 1: Cimri — 3 URL AYNI ANDA (CX33: 20 sayfa × 3 URL) ─────
-      Cimri__AutoSync__Enabled: "true"
-      Cimri__AutoSync__IntervalHours: "2"
-      Cimri__AutoSync__CategoryIntervalMinutes: "20"
-      Cimri__AutoSync__RunOnStart: "true"
-      Cimri__AutoSync__MaxPages: "20"
-      Cimri__AutoSync__MaxProducts: "2000"
-      Cimri__AutoSync__CategoryUrls__0: "https://www.cimri.com/indirimli-urunler?sort=new%2Cdesc"
-      Cimri__AutoSync__CategoryUrls__1: "https://www.cimri.com/indirimli-urunler?sort=discount%2Cdesc"
-      Cimri__AutoSync__CategoryUrls__2: "https://www.cimri.com/indirimli-urunler"
-      # ── Robot 2: Cimri fiyat izleme ─────────────────────────────────────
-      Cimri__PriceWatch__Enabled: "true"
-      Cimri__PriceWatch__IntervalMinutes: "60"
-      Cimri__PriceWatch__RunOnStart: "false"
-      Cimri__PriceWatch__ProductAgeDays: "3"
-      Cimri__PriceWatch__ResyncAfterMinutes: "50"
-      Cimri__PriceWatch__MaxProductsPerRun: "300"
+      # ── Robot 1: Cimri — KAPALI (sunucu IP'si Cloudflare tarafından engelleniyor)
+      Cimri__AutoSync__Enabled: "false"
+      Cimri__AutoSync__RunOnStart: "false"
+      # ── Robot 2: Cimri fiyat izleme — KAPALI
+      Cimri__PriceWatch__Enabled: "false"
       # ── Robot 1: Akakçe — fark-atan-fiyatlar (CX33: 15 sayfa) ──────────
       Akakce__AutoSync__Enabled: "true"
       Akakce__AutoSync__IntervalHours: "2"
       Akakce__AutoSync__CategoryIntervalMinutes: "20"
       Akakce__AutoSync__RunOnStart: "true"
-      Akakce__AutoSync__MaxPages: "15"
-      Akakce__AutoSync__MaxProducts: "1000"
+      Akakce__AutoSync__MaxPages: "8"
+      Akakce__AutoSync__MaxProducts: "500"
       # fark-atan-fiyatlar: farklı HTML yapısı — li[data-pr] yok, parse edilemiyor
       # fiyati-dusen-urunler: test edilmiş, çalışıyor
+      # CX33: 3 URL × 8 sayfa = 24 paralel Selenium görevi max (3 aynı anda, bellek güvenli)
       Akakce__AutoSync__CategoryUrls__0: "https://www.akakce.com/fiyati-dusen-urunler/?s=3"
       Akakce__AutoSync__CategoryUrls__1: "https://www.akakce.com/fiyati-dusen-urunler/?c=1&s=3"
       Akakce__AutoSync__CategoryUrls__2: "https://www.akakce.com/fiyati-dusen-urunler/?c=2&s=3"
-      Akakce__AutoSync__CategoryUrls__3: "https://www.akakce.com/fiyati-dusen-urunler/?c=4&s=3"
-      Akakce__AutoSync__CategoryUrls__4: "https://www.akakce.com/fiyati-dusen-urunler/?c=9&s=3"
-      Akakce__AutoSync__CategoryUrls__5: "https://www.akakce.com/fiyati-dusen-urunler/?c=7&s=3"
       # ── Robot 2: Akakçe fiyat izleme ─────────────────────────────────────
       Akakce__PriceWatch__Enabled: "true"
       Akakce__PriceWatch__IntervalMinutes: "60"

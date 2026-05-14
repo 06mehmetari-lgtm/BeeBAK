@@ -84,8 +84,8 @@ public class AkakceListingDiscoveryJob : AsyncBackgroundJob<AkakceListingDiscove
             $"{maxPages} sayfa paralel olarak çekiliyor (Selenium Grid).",
             url: listingUrl, index: 0, total: maxPages);
 
-        // Aynı anda en fazla 6 Selenium oturumu (Grid kapasitesi)
-        var sem = new System.Threading.SemaphoreSlim(6, 6);
+        // Aynı anda en fazla 3 Selenium oturumu (CX33: 2 node × 2 session = 4 kapasite; 3 paralel bellek güvenli)
+        var sem = new System.Threading.SemaphoreSlim(3, 3);
 
         var fetchTasks = pageUrls.Select(async item =>
         {
