@@ -83,14 +83,14 @@ ok "Docker Compose: $(docker compose version --short)"
 
 # ── Adım 4: Güvenlik duvarı ──────────────────────────────────────
 step "[4/7] Güvenlik duvarı yapılandırılıyor..."
-# SSH'yi kapat — bağlantıyı kesmez
-ufw allow OpenSSH    --quiet
-# RabbitMQ management (opsiyonel, kapalı — güvenli)
-# ufw allow 15672/tcp  --quiet
-# API portu (ihtiyaç olursa aç)
-# ufw allow 44381/tcp  --quiet
-ufw --force enable   2>/dev/null || true
-ok "Güvenlik duvarı: SSH açık, gereksiz portlar kapalı."
+# SSH portunu aç (22/tcp) — bağlantıyı kesmez
+ufw allow 22/tcp    > /dev/null 2>&1 || true
+# RabbitMQ management (opsiyonel — gerekirse aç)
+# ufw allow 15672/tcp > /dev/null 2>&1
+# API portu (gerekirse aç)
+# ufw allow 44381/tcp > /dev/null 2>&1
+ufw --force enable  > /dev/null 2>&1 || true
+ok "Güvenlik duvarı: SSH (22) açık, gereksiz portlar kapalı."
 
 # ── Adım 5: Repo klonlama ────────────────────────────────────────
 step "[5/7] BeeBAK kaynak kodu indiriliyor..."
