@@ -264,6 +264,10 @@ services:
       Akakce__AutoSync__CategoryUrls__3: "https://www.akakce.com/fiyati-dusen-urunler/?c=4&s=3"
       Akakce__AutoSync__CategoryUrls__4: "https://www.akakce.com/fiyati-dusen-urunler/?c=9&s=3"
       Akakce__AutoSync__CategoryUrls__5: "https://www.akakce.com/fiyati-dusen-urunler/?c=7&s=3"
+      Akakce__AutoSync__CategoryUrls__6: "https://www.akakce.com/fark-atan-fiyatlar/"
+      Akakce__AutoSync__CategoryUrls__7: "https://www.akakce.com/fark-atan-fiyatlar/?c=1"
+      Akakce__AutoSync__CategoryUrls__8: "https://www.akakce.com/fark-atan-fiyatlar/?c=2"
+      Akakce__AutoSync__CategoryUrls__9: "https://www.akakce.com/fark-atan-fiyatlar/?c=4"
       # ── Akakce PriceWatch ───────────────────────────────────────────────
       Akakce__PriceWatch__Enabled: "true"
       Akakce__PriceWatch__IntervalMinutes: "60"
