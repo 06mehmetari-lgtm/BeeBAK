@@ -133,7 +133,7 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         sb.AppendLine("╭──────────────");
         sb.AppendLine("💰 <b>EN DÜŞÜK FİYAT</b>");
         sb.AppendLine($"<b>{EscapeHtml(FormatMoney(lowest, currency))}</b>");
-        var linkLabel = IsMerchantDirectUrl(bestUrl) ? "🛒 Ürünü İncele →" : "🔗 Tüm teklifleri gör →";
+        var linkLabel = IsMerchantDirectUrl(bestUrl) ? "🛒 Ürünü İncele →" : "🛒 Teklife Git →";
         sb.AppendLine($"<a href=\"{EscapeAttr(bestUrl)}\">{linkLabel}</a>");
         if (!string.IsNullOrWhiteSpace(merchantName))
             sb.AppendLine($"🏪 {EscapeHtml(merchantName.Trim())}");
