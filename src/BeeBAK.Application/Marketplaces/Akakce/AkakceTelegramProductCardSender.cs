@@ -97,16 +97,17 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         var lowest   = cheapest.Price;
         var currency = string.IsNullOrWhiteSpace(cheapest.Currency) ? "TRY" : cheapest.Currency.Trim();
 
-        // İndirim yüzdesi: tüm tekliflerin ORTALAMASI baz alınır
         decimal? discountPct = null;
+        decimal? avgPrice = null;
         if (offers.Count > 1)
         {
-            var avg = offers.Average(o => o.Price);
-            if (avg > lowest)
-                discountPct = Math.Round((avg - lowest) / avg * 100m);
+            avgPrice = offers.Average(o => o.Price);
+            if (avgPrice > lowest)
+                discountPct = Math.Round((avgPrice.Value - lowest) / avgPrice.Value * 100m);
         }
         else if (product.PreviousPriceAmount is > 0 && product.PreviousPriceAmount > lowest)
         {
+            avgPrice = product.PreviousPriceAmount.Value;
             discountPct = Math.Round((product.PreviousPriceAmount.Value - lowest) / product.PreviousPriceAmount.Value * 100m);
         }
 
@@ -132,18 +133,40 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         sb.AppendLine("╭──────────────");
         sb.AppendLine("💰 <b>EN DÜŞÜK FİYAT</b>");
         sb.AppendLine($"<b>{EscapeHtml(FormatMoney(lowest, currency))}</b>");
-        if (!string.IsNullOrWhiteSpace(merchantName))
-            sb.AppendLine($"🏪 <b>{EscapeHtml(merchantName.Trim())}</b>");
-        var linkLabel = IsMerchantDirectUrl(bestUrl) ? "🛒 Ürüne Git →" : "🔗 Tüm teklifleri gör →";
+        var linkLabel = IsMerchantDirectUrl(bestUrl) ? "🛒 Ürünü İncele →" : "🔗 Tüm teklifleri gör →";
         sb.AppendLine($"<a href=\"{EscapeAttr(bestUrl)}\">{linkLabel}</a>");
+        if (!string.IsNullOrWhiteSpace(merchantName))
+            sb.AppendLine($"🏪 {EscapeHtml(merchantName.Trim())}");
+        if (avgPrice.HasValue && avgPrice.Value > lowest)
+            sb.AppendLine($"💸 ≈ {EscapeHtml(FormatMoney(avgPrice.Value - lowest, currency))} tasarruf");
+        if (discountPct is > 0)
+        {
+            var score = Math.Min(Math.Round(discountPct.Value / 10m, 1), 10m);
+            sb.AppendLine($"🧠 Fırsat Skoru: {score.ToString("0.#", Tr)} / 10");
+        }
+        if (cheapest.ScrapedUtc != default)
+        {
+            var ago = DateTime.UtcNow - cheapest.ScrapedUtc;
+            var agoStr = ago.TotalMinutes < 60
+                ? $"{(int)ago.TotalMinutes} dk önce"
+                : ago.TotalHours < 24
+                    ? $"{(int)ago.TotalHours} saat önce"
+                    : $"{(int)ago.TotalDays} gün önce";
+            sb.AppendLine($"⏳ {agoStr} güncellendi");
+        }
         sb.AppendLine("╰──────────────");
         sb.AppendLine();
 
-        // ── Diğer teklifler ──────────────────────────────────────────────────
+        sb.AppendLine("⚠️ <i>Fiyatlar hızlı değişebilir</i>");
+        sb.AppendLine();
+        sb.AppendLine("━━━━━━━━━━━━━━");
+        sb.AppendLine();
+
+        // ── Diğer satıcılar ──────────────────────────────────────────────────
         var otherOffers = offers.Where(o => o.Price != lowest || o.MerchantId != cheapest.MerchantId).ToList();
         if (otherOffers.Count > 0)
         {
-            sb.AppendLine("📊 <b>Diğer Teklifler</b>");
+            sb.AppendLine("📊 <b>Diğer Satıcılar</b>");
             foreach (var offer in otherOffers)
             {
                 merchantsById.TryGetValue(offer.MerchantId, out var offerSeller);
@@ -166,12 +189,7 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
 
         // ── Ortalama karşılaştırması ─────────────────────────────────────────
         if (discountPct is > 0)
-        {
-            sb.AppendLine($"📉 Piyasa ortalamasından %{(int)discountPct.Value} daha avantajlı");
-            sb.AppendLine();
-        }
-
-        sb.Append("⚠️ <i>Stok ve fiyat kısa sürede değişebilir.</i>");
+            sb.Append($"📉 Piyasa ortalamasından %{(int)discountPct.Value} daha avantajlı");
 
         return sb.ToString().TrimEnd();
     }
