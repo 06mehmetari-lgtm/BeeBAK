@@ -52,7 +52,6 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         var product = await _productRepository.FindByProductCodeAsync(productCode, includeOffers: true, cancellationToken);
         if (product == null || product.Offers.Count == 0) return;
 
-        // En ucuz teklif — sadece URL'si olan teklifler arasından, tüm teklifleri fiyata göre sırala
         var offers = product.Offers.OrderBy(o => o.Price).ToList();
         var cheapest = offers.FirstOrDefault(o =>
             !string.IsNullOrWhiteSpace(o.SiteRedirectUrl)
@@ -69,6 +68,14 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         merchantsById.TryGetValue(cheapest.MerchantId, out var merchantName);
         merchantName ??= cheapest.SellerName?.Trim() ?? cheapest.OfferTitle?.Trim();
 
+        // Ana CTA butonu için URL — Akakce redirect kullanma
+        var bestUrl    = PickBestUrl(cheapest, product.ProductUrl);
+        var buttonText = IsMerchantDirectUrl(bestUrl) ? "🛒 Ürüne Git →" : "🔗 Tüm teklifleri gör →";
+        var replyMarkup = new
+        {
+            inline_keyboard = new[] { new[] { new { text = buttonText, url = bestUrl } } }
+        };
+
         var caption = BuildCaptionHtml(product, offers, cheapest, merchantName, merchantsById, triggerType);
         if (caption.Length > 1024) caption = caption[..1021] + "…";
 
@@ -76,14 +83,13 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         var token  = telegram.BotToken.Trim();
         var chatId = telegram.ChatId.Trim();
 
-        // Orijinal ürün fotoğrafını gönder (overlay/gölge içermeyen)
         var photoUrl = product.PrimaryImageUrl?.Trim();
         bool ok = false;
         if (!string.IsNullOrWhiteSpace(photoUrl) && Uri.TryCreate(photoUrl, UriKind.Absolute, out var pu)
             && (pu.Scheme == Uri.UriSchemeHttp || pu.Scheme == Uri.UriSchemeHttps))
-            ok = await TrySendPhotoAsync(client, token, chatId, photoUrl, caption, cancellationToken);
+            ok = await TrySendPhotoAsync(client, token, chatId, photoUrl, caption, replyMarkup, cancellationToken);
         if (!ok)
-            await TrySendMessageAsync(client, token, chatId, caption, cancellationToken);
+            await TrySendMessageAsync(client, token, chatId, caption, replyMarkup, cancellationToken);
     }
 
     private static string BuildCaptionHtml(
@@ -127,18 +133,15 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         sb.AppendLine($"<b>{EscapeHtml(product.Title.Trim())}</b>");
         sb.AppendLine();
 
-        // En ucuz teklif — öne çıkarılmış blok
-        sb.AppendLine($"🏆 <b>{EscapeHtml(FormatMoney(lowest, currency))}</b>");
+        // En ucuz teklif — öne çıkarılmış blok (link caption'da değil, inline button'da)
+        sb.AppendLine("━━━━━━━━━━━━━━━━━━━━");
+        sb.AppendLine($"🥇 <b>{EscapeHtml(FormatMoney(lowest, currency))}</b>");
         if (!string.IsNullOrWhiteSpace(merchantName))
-            sb.AppendLine($"<b>{EscapeHtml(merchantName.Trim())}</b>");
-        var url = PickBestUrl(cheapest, product.ProductUrl);
-        if (IsMerchantDirectUrl(url))
-            sb.AppendLine($"🔗 <a href=\"{EscapeAttr(url)}\">Ürüne Git →</a>");
-        else
-            sb.AppendLine($"🔗 <a href=\"{EscapeAttr(url)}\">Tüm teklifleri gör →</a>");
+            sb.AppendLine($"   <b>{EscapeHtml(merchantName.Trim())}</b>");
+        sb.AppendLine("━━━━━━━━━━━━━━━━━━━━");
         sb.AppendLine();
 
-        // Diğer tüm teklifler
+        // Diğer tüm teklifler — varsa doğrudan mağaza linki
         var otherOffers = offers.Where(o => o.Price != lowest || o.MerchantId != cheapest.MerchantId).ToList();
         if (otherOffers.Count > 0)
         {
@@ -150,7 +153,15 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
                            ?? offer.SellerName?.Trim()
                            ?? offer.OfferTitle?.Trim()
                            ?? "Satıcı";
-                sb.AppendLine($"• {EscapeHtml(FormatMoney(offer.Price, currency))} — {EscapeHtml(offerSeller)}");
+
+                var priceStr = EscapeHtml(FormatMoney(offer.Price, currency));
+                var sellerStr = EscapeHtml(offerSeller);
+                var directUrl = offer.MerchantProductUrl?.Trim();
+
+                if (!string.IsNullOrWhiteSpace(directUrl))
+                    sb.AppendLine($"• <a href=\"{EscapeAttr(directUrl)}\">{priceStr}</a> — {sellerStr}");
+                else
+                    sb.AppendLine($"• {priceStr} — {sellerStr}");
             }
             sb.AppendLine();
         }
@@ -168,9 +179,8 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
 
     private static string PickBestUrl(AkakceOffer offer, string productUrl)
     {
-        // Sadece mağazanın kendi doğrudan URL'si — Akakçe redirect'i asla kullanma
         if (!string.IsNullOrWhiteSpace(offer.MerchantProductUrl)) return offer.MerchantProductUrl.Trim();
-        return productUrl; // Akakçe ürün sayfası (kullanıcı tüm teklifleri görür)
+        return productUrl;
     }
 
     private static bool IsMerchantDirectUrl(string url) =>
@@ -241,25 +251,29 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         }
     }
 
-    private async Task<bool> TrySendPhotoAsync(HttpClient client, string botToken, string chatId, string photoUrl, string caption, CancellationToken ct)
+    private async Task<bool> TrySendPhotoAsync(
+        HttpClient client, string botToken, string chatId,
+        string photoUrl, string caption, object replyMarkup, CancellationToken ct)
     {
         try
         {
             using var response = await client.PostAsJsonAsync(
                 $"https://api.telegram.org/bot{botToken}/sendPhoto",
-                new { chat_id = chatId, photo = photoUrl, caption, parse_mode = "HTML" }, ct);
+                new { chat_id = chatId, photo = photoUrl, caption, parse_mode = "HTML", reply_markup = replyMarkup }, ct);
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex) { _logger.LogWarning(ex, "Akakce Telegram sendPhoto failed"); return false; }
     }
 
-    private async Task<bool> TrySendMessageAsync(HttpClient client, string botToken, string chatId, string text, CancellationToken ct)
+    private async Task<bool> TrySendMessageAsync(
+        HttpClient client, string botToken, string chatId,
+        string text, object replyMarkup, CancellationToken ct)
     {
         try
         {
             using var response = await client.PostAsJsonAsync(
                 $"https://api.telegram.org/bot{botToken}/sendMessage",
-                new { chat_id = chatId, text, parse_mode = "HTML", disable_web_page_preview = false }, ct);
+                new { chat_id = chatId, text, parse_mode = "HTML", disable_web_page_preview = false, reply_markup = replyMarkup }, ct);
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex) { _logger.LogWarning(ex, "Akakce Telegram sendMessage failed"); return false; }
