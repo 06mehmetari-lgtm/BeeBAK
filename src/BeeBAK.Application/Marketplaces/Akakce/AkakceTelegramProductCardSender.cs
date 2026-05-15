@@ -68,13 +68,8 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         merchantName ??= cheapest.SellerName?.Trim() ?? cheapest.OfferTitle?.Trim();
 
         var bestUrl    = PickBestUrl(cheapest, product.ProductUrl);
-        var buttonText = IsMerchantDirectUrl(bestUrl) ? "🛒 Ürüne Git →" : "🔗 Tüm teklifleri gör →";
-        var replyMarkup = new
-        {
-            inline_keyboard = new[] { new[] { new { text = buttonText, url = bestUrl } } }
-        };
 
-        var caption = BuildCaptionHtml(product, offers, cheapest, merchantName, merchantsById, triggerType);
+        var caption = BuildCaptionHtml(product, offers, cheapest, merchantName, merchantsById, bestUrl, triggerType);
         if (caption.Length > 1024) caption = caption[..1021] + "…";
 
         var client = _httpClientFactory.CreateClient(CimriTelegramProductCardSender.HttpClientName);
@@ -85,9 +80,9 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         bool ok = false;
         if (!string.IsNullOrWhiteSpace(photoUrl) && Uri.TryCreate(photoUrl, UriKind.Absolute, out var pu)
             && (pu.Scheme == Uri.UriSchemeHttp || pu.Scheme == Uri.UriSchemeHttps))
-            ok = await TrySendPhotoAsync(client, token, chatId, photoUrl, caption, replyMarkup, cancellationToken);
+            ok = await TrySendPhotoAsync(client, token, chatId, photoUrl, caption, cancellationToken);
         if (!ok)
-            await TrySendMessageAsync(client, token, chatId, caption, replyMarkup, cancellationToken);
+            await TrySendMessageAsync(client, token, chatId, caption, cancellationToken);
     }
 
     private static string BuildCaptionHtml(
@@ -96,6 +91,7 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         AkakceOffer cheapest,
         string? merchantName,
         System.Collections.Generic.Dictionary<Guid, string> merchantsById,
+        string bestUrl,
         string triggerType)
     {
         var lowest   = cheapest.Price;
@@ -138,15 +134,9 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         sb.AppendLine($"<b>{EscapeHtml(FormatMoney(lowest, currency))}</b>");
         if (!string.IsNullOrWhiteSpace(merchantName))
             sb.AppendLine($"🏪 <b>{EscapeHtml(merchantName.Trim())}</b>");
+        var linkLabel = IsMerchantDirectUrl(bestUrl) ? "🛒 Ürüne Git →" : "🔗 Tüm teklifleri gör →";
+        sb.AppendLine($"<a href=\"{EscapeAttr(bestUrl)}\">{linkLabel}</a>");
         sb.AppendLine("╰──────────────");
-        sb.AppendLine();
-
-        // ── Buton işareti (inline keyboard'a yönlendirir) ────────────────────
-        sb.AppendLine("👇 <i>Aşağıdaki butona tıklayın</i>");
-        sb.AppendLine();
-
-        // ── Ayraç ────────────────────────────────────────────────────────────
-        sb.AppendLine("━━━━━━━━━━━━");
         sb.AppendLine();
 
         // ── Diğer teklifler ──────────────────────────────────────────────────
@@ -262,13 +252,13 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
 
     private async Task<bool> TrySendPhotoAsync(
         HttpClient client, string botToken, string chatId,
-        string photoUrl, string caption, object replyMarkup, CancellationToken ct)
+        string photoUrl, string caption, CancellationToken ct)
     {
         try
         {
             using var response = await client.PostAsJsonAsync(
                 $"https://api.telegram.org/bot{botToken}/sendPhoto",
-                new { chat_id = chatId, photo = photoUrl, caption, parse_mode = "HTML", reply_markup = replyMarkup }, ct);
+                new { chat_id = chatId, photo = photoUrl, caption, parse_mode = "HTML" }, ct);
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex) { _logger.LogWarning(ex, "Akakce Telegram sendPhoto failed"); return false; }
@@ -276,13 +266,13 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
 
     private async Task<bool> TrySendMessageAsync(
         HttpClient client, string botToken, string chatId,
-        string text, object replyMarkup, CancellationToken ct)
+        string text, CancellationToken ct)
     {
         try
         {
             using var response = await client.PostAsJsonAsync(
                 $"https://api.telegram.org/bot{botToken}/sendMessage",
-                new { chat_id = chatId, text, parse_mode = "HTML", disable_web_page_preview = false, reply_markup = replyMarkup }, ct);
+                new { chat_id = chatId, text, parse_mode = "HTML", disable_web_page_preview = false }, ct);
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex) { _logger.LogWarning(ex, "Akakce Telegram sendMessage failed"); return false; }
