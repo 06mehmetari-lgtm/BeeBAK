@@ -365,6 +365,13 @@ export class AkakceProductsComponent implements OnInit, OnDestroy, AfterViewChec
     this.pendingScrollToBottom = true;
   }
 
+  bestMerchantDisplay(p: AkakceProductDto): string | null {
+    const offers = p.offers ?? [];
+    const cheapest = offers.find(o => o.isCheapest) ?? [...offers].sort((a, b) => a.price - b.price)[0];
+    const name = cheapest?.merchantName?.trim() || cheapest?.offerTitle?.trim();
+    return name || null;
+  }
+
   private sortProducts(items: AkakceProductDto[]): AkakceProductDto[] {
     return [...items].sort((a, b) => (b.discountPercent ?? -1) - (a.discountPercent ?? -1));
   }

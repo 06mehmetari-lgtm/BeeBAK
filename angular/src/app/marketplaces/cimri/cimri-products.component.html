@@ -397,7 +397,10 @@
               <s>{{ formatPrice(pc.previous, pc.currency) }}</s>
             </span>
           </div>
-          <span *ngIf="pc.merchant" class="product-card__merchant-tag">{{ pc.merchant }}</span>
+          <div class="product-card__price-meta">
+            <span *ngIf="pc.merchant" class="product-card__merchant-tag">{{ pc.merchant }}</span>
+            <span class="platform-badge platform-badge--cimri">Cimri</span>
+          </div>
         </div>
 
         <div class="product-card__offer-count" *ngIf="product.totalOfferCount != null">
@@ -432,6 +435,7 @@
             <th>#</th>
             <th>Mağaza</th>
             <th>Satıcı</th>
+            <th>Platform</th>
             <th>Fiyat</th>
             <th>Kargo</th>
             <th>Promosyon</th>
@@ -462,6 +466,28 @@
               </div>
             </td>
             <td>{{ offer.sellerName || '—' }}</td>
+            <td>
+              <a
+                *ngIf="offer.merchantProductUrl; else cimriPlatformLink"
+                [href]="offer.merchantProductUrl"
+                target="_blank"
+                rel="noopener"
+                class="platform-badge platform-badge--cimri platform-badge--link"
+                [title]="offer.merchantProductUrl"
+              >Cimri</a>
+              <ng-template #cimriPlatformLink>
+                <a
+                  *ngIf="offer.offerUrl; else cimriStaticBadge"
+                  [href]="offer.offerUrl"
+                  target="_blank"
+                  rel="noopener"
+                  class="platform-badge platform-badge--cimri platform-badge--link"
+                >Cimri</a>
+                <ng-template #cimriStaticBadge>
+                  <span class="platform-badge platform-badge--cimri">Cimri</span>
+                </ng-template>
+              </ng-template>
+            </td>
             <td class="price-cell">
               <strong>{{ formatPrice(offer.price, offer.currency) }}</strong>
               <span *ngIf="offer.installmentBadge" class="installment">{{ offer.installmentBadge }}</span>

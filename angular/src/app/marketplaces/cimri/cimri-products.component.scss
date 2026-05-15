@@ -986,6 +986,13 @@
     white-space: nowrap;
   }
 
+  &__price-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.25rem;
+  }
+
   &__offer-count {
     font-size: 0.78rem;
     font-weight: 600;
@@ -1518,6 +1525,39 @@
     font-size: clamp(1.4rem, 16cqw, 2.5rem);
     opacity: 0.55;
     pointer-events: none;
+  }
+}
+
+/* ── Platform badges ─────────────────────────────────────────── */
+.platform-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+  text-decoration: none;
+  white-space: nowrap;
+
+  &--cimri {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+  }
+
+  &--akakce {
+    background: #fef9c3;
+    color: #713f12;
+    border: 1px solid #fde047;
+  }
+
+  &--link {
+    cursor: pointer;
+    transition: opacity 0.15s;
+    &:hover { opacity: 0.75; }
   }
 }
 

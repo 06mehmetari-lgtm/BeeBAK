@@ -329,9 +329,66 @@ pre {
   gap: 0.15rem;
   text-align: right;
 
-  span {
+  > span:first-child {
     color: #64748b;
     font-size: 0.75rem;
+  }
+}
+
+.seller-tag {
+  font-size: 0.7rem;
+  color: #0f766e;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 10rem;
+}
+
+.platform-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+
+  &--akakce {
+    background: #fef9c3;
+    color: #713f12;
+    border: 1px solid #fde047;
+  }
+
+  &--cimri {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+  }
+}
+
+.offer-merchant {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+
+  &__name {
+    font-weight: 600;
+  }
+}
+
+.offer-badge {
+  display: inline-block;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+
+  &--cheapest {
+    background: #dcfce7;
+    color: #166534;
   }
 }
 

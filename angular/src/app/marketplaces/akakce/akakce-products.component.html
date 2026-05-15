@@ -263,6 +263,8 @@
         <div class="product-row__metric">
           <span>{{ '::AkakceBestPriceHeading' | abpLocalization }}</span>
           <strong>{{ formatMoney(product.bestPriceAmount) }}</strong>
+          <span class="seller-tag" *ngIf="bestMerchantDisplay(product) as seller">{{ seller }}</span>
+          <span class="platform-badge platform-badge--akakce">Akakce</span>
         </div>
         <div class="product-row__discount" *ngIf="product.discountPercent != null">
           %{{ product.discountPercent }}
@@ -284,6 +286,7 @@
             <tr>
               <th>Ürün</th>
               <th>{{ '::Seller' | abpLocalization }}</th>
+              <th>Platform</th>
               <th>{{ '::Price' | abpLocalization }}</th>
               <th>{{ '::Shipping' | abpLocalization }}</th>
               <th>{{ '::AkakceColumnStock' | abpLocalization }}</th>
@@ -295,7 +298,15 @@
           <tbody>
             <tr *ngFor="let offer of product.offers; trackBy: trackByOfferId">
               <td>{{ offer.offerTitle || product.title }}</td>
-              <td>{{ offer.merchantName }}</td>
+              <td>
+                <div class="offer-merchant">
+                  <span class="offer-merchant__name">{{ offer.merchantName }}</span>
+                  <span class="offer-badge offer-badge--cheapest" *ngIf="offer.isCheapest">En ucuz</span>
+                </div>
+              </td>
+              <td>
+                <span class="platform-badge platform-badge--akakce">Akakce</span>
+              </td>
               <td>{{ formatMoney(offer.price, offer.currency) }}</td>
               <td>{{ offer.shippingText || '-' }}</td>
               <td>
