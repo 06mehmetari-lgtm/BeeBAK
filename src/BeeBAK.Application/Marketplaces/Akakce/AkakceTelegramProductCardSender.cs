@@ -70,7 +70,7 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         var bestUrl    = PickBestUrl(cheapest, product.ProductUrl);
 
         var caption = BuildCaptionHtml(product, offers, cheapest, merchantName, merchantsById, bestUrl, triggerType);
-        if (caption.Length > 1024) caption = caption[..1021] + "…";
+        if (caption.Length > 1024) caption = SafeTruncateHtml(caption, 1021);
 
         var client = _httpClientFactory.CreateClient(CimriTelegramProductCardSender.HttpClientName);
         var token  = telegram.BotToken.Trim();
@@ -162,12 +162,12 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         sb.AppendLine("━━━━━━━━━━━━━━");
         sb.AppendLine();
 
-        // ── Diğer satıcılar ──────────────────────────────────────────────────
+        // ── Diğer satıcılar (max 4) ──────────────────────────────────────────
         var otherOffers = offers.Where(o => o.Price != lowest || o.MerchantId != cheapest.MerchantId).ToList();
         if (otherOffers.Count > 0)
         {
             sb.AppendLine("📊 <b>Diğer Satıcılar</b>");
-            foreach (var offer in otherOffers)
+            foreach (var offer in otherOffers.Take(4))
             {
                 merchantsById.TryGetValue(offer.MerchantId, out var offerSeller);
                 offerSeller = offerSeller?.Trim()
@@ -184,6 +184,8 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
                 else
                     sb.AppendLine($"• {priceStr} — {sellerStr}");
             }
+            if (otherOffers.Count > 4)
+                sb.AppendLine($"  <i>+{otherOffers.Count - 4} teklif daha</i>");
             sb.AppendLine();
         }
 
@@ -304,6 +306,13 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex) { _logger.LogWarning(ex, "Akakce Telegram sendMessage failed"); return false; }
+    }
+
+    private static string SafeTruncateHtml(string s, int maxLen)
+    {
+        // Cut at the last newline before maxLen to never break inside an HTML tag
+        var cut = s.LastIndexOf('\n', maxLen);
+        return cut > 0 ? s[..cut].TrimEnd() : s[..maxLen].TrimEnd();
     }
 
     private static string EscapeHtml(string s) =>
