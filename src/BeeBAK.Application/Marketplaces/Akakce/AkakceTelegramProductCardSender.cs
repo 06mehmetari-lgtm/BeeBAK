@@ -277,6 +277,11 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
             using var response = await client.PostAsJsonAsync(
                 $"https://api.telegram.org/bot{botToken}/sendPhoto",
                 new { chat_id = chatId, photo = photoUrl, caption, parse_mode = "HTML" }, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning("Akakce Telegram sendPhoto HTTP {Status}: {Body}", response.StatusCode, body);
+            }
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex) { _logger.LogWarning(ex, "Akakce Telegram sendPhoto failed"); return false; }
@@ -291,6 +296,11 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
             using var response = await client.PostAsJsonAsync(
                 $"https://api.telegram.org/bot{botToken}/sendMessage",
                 new { chat_id = chatId, text, parse_mode = "HTML", disable_web_page_preview = false }, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning("Akakce Telegram sendMessage HTTP {Status}: {Body} | Caption: {Caption}", response.StatusCode, body, text);
+            }
             return response.IsSuccessStatusCode;
         }
         catch (Exception ex) { _logger.LogWarning(ex, "Akakce Telegram sendMessage failed"); return false; }
