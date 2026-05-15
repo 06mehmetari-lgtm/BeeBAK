@@ -170,7 +170,7 @@ public class CimriTelegramProductCardSender : ICimriTelegramProductCardSender, I
         var lowest = offers[0].Price;
         var currency = string.IsNullOrWhiteSpace(offers[0].Currency) ? "TRY" : offers[0].Currency.Trim();
 
-        // Piyasa fiyatı: çoklu teklif varsa en yüksek, yoksa Cimri'nin üstü çizili fiyatı
+        // Referans fiyat: en yüksek teklif (2+ varsa) veya önceki fiyat
         decimal? marketPrice = null;
         if (offers.Count >= 2)
         {
@@ -185,16 +185,11 @@ public class CimriTelegramProductCardSender : ICimriTelegramProductCardSender, I
         if (marketPrice.HasValue && marketPrice.Value > 0)
             discountPct = Math.Round((marketPrice.Value - lowest) / marketPrice.Value * 100m);
 
-        merchantsById.TryGetValue(offers[0].MerchantId, out var merchantLabel);
-        merchantLabel ??= offers[0].SellerName?.Trim()
-                       ?? offers[0].OfferTitle?.Trim()
-                       ?? product.BestPriceMerchantName?.Trim();
-
         var url = PickBestMerchantUrl(product);
 
         var sb = new StringBuilder();
 
-        // ── Başlık (spec: minimal emoji, clickbait yasak) ──────────────────────
+        // ── Başlık ────────────────────────────────────────────────────────────
         var header = triggerType switch
         {
             "price_drop"  => "💸 Fiyat düştü",
@@ -210,33 +205,32 @@ public class CimriTelegramProductCardSender : ICimriTelegramProductCardSender, I
         sb.AppendLine($"<b>{EscapeHtml(product.Title.Trim())}</b>");
         sb.AppendLine();
 
-        // ── Fiyat karşılaştırması ─────────────────────────────────────────────
-        if (marketPrice.HasValue)
+        // ── Tüm platform fiyatları (max 5 teklif) ────────────────────────────
+        var displayOffers = offers.Take(5).ToList();
+        sb.AppendLine("📊 <b>Platform Fiyatları:</b>");
+        foreach (var offer in displayOffers)
         {
-            sb.AppendLine($"Türkiye piyasa ortalaması:");
-            sb.AppendLine($"<s>{EscapeHtml(FormatMoney(marketPrice.Value, currency))}</s>");
-            sb.AppendLine();
+            merchantsById.TryGetValue(offer.MerchantId, out var offerSeller);
+            offerSeller = offerSeller?.Trim()
+                       ?? offer.SellerName?.Trim()
+                       ?? offer.OfferTitle?.Trim()
+                       ?? product.BestPriceMerchantName?.Trim()
+                       ?? "Satıcı";
+            var star = offer.Price == lowest ? " 🏆" : "";
+            sb.AppendLine($"• <b>{EscapeHtml(FormatMoney(offer.Price, currency))}</b> — {EscapeHtml(offerSeller)} <i>(Cimri)</i>{star}");
         }
-
-        sb.AppendLine($"💸 Anlık fiyat:");
-        sb.AppendLine($"<b>{EscapeHtml(FormatMoney(lowest, currency))}</b>");
-
-        if (discountPct is > 0)
-        {
-            sb.AppendLine();
-            sb.AppendLine($"📉 Yaklaşık %{(int)discountPct.Value} daha uygun");
-        }
-
+        if (offers.Count > 5)
+            sb.AppendLine($"  <i>+{offers.Count - 5} teklif daha…</i>");
         sb.AppendLine();
 
-        // ── Mağaza + CTA ──────────────────────────────────────────────────────
-        if (!string.IsNullOrWhiteSpace(merchantLabel))
+        // ── İndirim özeti ─────────────────────────────────────────────────────
+        if (discountPct is > 0)
         {
-            sb.AppendLine($"🛒 Satıcı:");
-            sb.AppendLine($"{EscapeHtml(merchantLabel.Trim())}");
+            sb.AppendLine($"📉 En ucuz teklif yaklaşık %{(int)discountPct.Value} daha avantajlı");
             sb.AppendLine();
         }
 
+        // ── CTA ───────────────────────────────────────────────────────────────
         if (IsMerchantDirectUrl(url))
             sb.Append($"🔗 <a href=\"{EscapeAttr(url)}\">Ürüne Git</a>");
         else

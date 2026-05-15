@@ -60,12 +60,16 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
             || !string.IsNullOrWhiteSpace(o.OfferUrl))
             ?? offers[0];
 
-        var merchant = await _merchantRepository.FindAsync(cheapest.MerchantId, cancellationToken: cancellationToken);
-        var merchantName = merchant?.Name?.Trim()
-                        ?? cheapest.SellerName?.Trim()
-                        ?? cheapest.OfferTitle?.Trim();
+        // Tüm satıcıları yükle
+        var merchantIds = offers.Select(o => o.MerchantId).Distinct().ToList();
+        var merchantsList = await _merchantRepository.GetListAsync(
+            m => merchantIds.Contains(m.Id), cancellationToken: cancellationToken);
+        var merchantsById = merchantsList.ToDictionary(m => m.Id, m => m.Name);
 
-        var caption = BuildCaptionHtml(product, offers, cheapest, merchantName, triggerType);
+        merchantsById.TryGetValue(cheapest.MerchantId, out var merchantName);
+        merchantName ??= cheapest.SellerName?.Trim() ?? cheapest.OfferTitle?.Trim();
+
+        var caption = BuildCaptionHtml(product, offers, cheapest, merchantName, merchantsById, triggerType);
         if (caption.Length > 1024) caption = caption[..1021] + "…";
 
         var client = _httpClientFactory.CreateClient(CimriTelegramProductCardSender.HttpClientName);
@@ -87,12 +91,13 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         System.Collections.Generic.List<AkakceOffer> offers,
         AkakceOffer cheapest,
         string? merchantName,
+        System.Collections.Generic.Dictionary<Guid, string> merchantsById,
         string triggerType)
     {
         var lowest   = cheapest.Price;
         var currency = string.IsNullOrWhiteSpace(cheapest.Currency) ? "TRY" : cheapest.Currency.Trim();
 
-        // Piyasa Fiyatı = en yüksek teklif (2+ teklif varsa), yoksa PreviousPriceAmount
+        // Referans fiyat: en yüksek teklif (2+ varsa) veya önceki fiyat
         decimal? marketPrice = null;
         if (offers.Count >= 2)
         {
@@ -122,28 +127,26 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         sb.AppendLine($"<b>{EscapeHtml(product.Title.Trim())}</b>");
         sb.AppendLine();
 
-        if (marketPrice.HasValue)
+        // Tüm platform fiyatları (max 5 teklif)
+        var displayOffers = offers.Take(5).ToList();
+        sb.AppendLine("📊 <b>Platform Fiyatları:</b>");
+        foreach (var offer in displayOffers)
         {
-            sb.AppendLine("Türkiye piyasa ortalaması:");
-            sb.AppendLine($"<s>{EscapeHtml(FormatMoney(marketPrice.Value, currency))}</s>");
-            sb.AppendLine();
+            merchantsById.TryGetValue(offer.MerchantId, out var offerSeller);
+            offerSeller = offerSeller?.Trim()
+                       ?? offer.SellerName?.Trim()
+                       ?? offer.OfferTitle?.Trim()
+                       ?? "Satıcı";
+            var star = offer.Price == lowest ? " 🏆" : "";
+            sb.AppendLine($"• <b>{EscapeHtml(FormatMoney(offer.Price, currency))}</b> — {EscapeHtml(offerSeller)} <i>(Akakce)</i>{star}");
         }
-
-        sb.AppendLine("💸 Anlık fiyat:");
-        sb.AppendLine($"<b>{EscapeHtml(FormatMoney(lowest, currency))}</b>");
+        if (offers.Count > 5)
+            sb.AppendLine($"  <i>+{offers.Count - 5} teklif daha…</i>");
+        sb.AppendLine();
 
         if (discountPct is > 0)
         {
-            sb.AppendLine();
-            sb.AppendLine($"📉 Yaklaşık %{(int)discountPct.Value} daha uygun");
-        }
-
-        sb.AppendLine();
-
-        if (!string.IsNullOrWhiteSpace(merchantName))
-        {
-            sb.AppendLine("🛒 Satıcı:");
-            sb.AppendLine($"{EscapeHtml(merchantName.Trim())}");
+            sb.AppendLine($"📉 En ucuz teklif yaklaşık %{(int)discountPct.Value} daha avantajlı");
             sb.AppendLine();
         }
 
