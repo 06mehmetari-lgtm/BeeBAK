@@ -17,8 +17,8 @@ public class AkakceSeleniumPageFetcher : ITransientDependency
 
     // FlareSolverr listing fetch — sıralı (session tabanlı, Cloudflare bir kez çözülür).
     private static readonly System.Threading.SemaphoreSlim _flareSolverrPageSem = new(1, 1);
-    // FlareSolverr detail fetch — en fazla 2 eş zamanlı (PrefetchCount=6 olsa bile)
-    private static readonly System.Threading.SemaphoreSlim _flareSolverrDetailSem = new(2, 2);
+    // FlareSolverr detail fetch — en fazla 1 eş zamanlı (CPU baskısını azaltmak için)
+    private static readonly System.Threading.SemaphoreSlim _flareSolverrDetailSem = new(1, 1);
     // FlareSolverr cookie inject için eski semaphore (fallback path)
     private static readonly System.Threading.SemaphoreSlim _flareSolverrSem = new(1, 1);
     private static string? _cachedCookieHeader;

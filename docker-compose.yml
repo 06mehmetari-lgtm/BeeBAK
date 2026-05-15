@@ -58,6 +58,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "1.5"
           memory: 1500M
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8191/health || exit 1"]
