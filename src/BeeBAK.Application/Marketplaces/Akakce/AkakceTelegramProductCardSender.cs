@@ -133,12 +133,12 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         sb.AppendLine();
 
         // ── En ucuz teklif kutusu ────────────────────────────────────────────
-        sb.AppendLine("╭──────────────────────");
+        sb.AppendLine("╭──────────────");
         sb.AppendLine("💰 <b>EN DÜŞÜK FİYAT</b>");
         sb.AppendLine($"<b>{EscapeHtml(FormatMoney(lowest, currency))}</b>");
         if (!string.IsNullOrWhiteSpace(merchantName))
             sb.AppendLine($"🏪 <b>{EscapeHtml(merchantName.Trim())}</b>");
-        sb.AppendLine("╰──────────────────────");
+        sb.AppendLine("╰──────────────");
         sb.AppendLine();
 
         // ── Buton işareti (inline keyboard'a yönlendirir) ────────────────────
@@ -146,7 +146,7 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         sb.AppendLine();
 
         // ── Ayraç ────────────────────────────────────────────────────────────
-        sb.AppendLine("━━━━━━━━━━━━━━━━━━━━");
+        sb.AppendLine("━━━━━━━━━━━━");
         sb.AppendLine();
 
         // ── Diğer teklifler ──────────────────────────────────────────────────
