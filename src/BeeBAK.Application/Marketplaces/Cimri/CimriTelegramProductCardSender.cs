@@ -217,7 +217,7 @@ public class CimriTelegramProductCardSender : ICimriTelegramProductCardSender, I
                        ?? product.BestPriceMerchantName?.Trim()
                        ?? "Satıcı";
             var star = offer.Price == lowest ? " 🏆" : "";
-            sb.AppendLine($"• <b>{EscapeHtml(FormatMoney(offer.Price, currency))}</b> — {EscapeHtml(offerSeller)} <i>(Cimri)</i>{star}");
+            sb.AppendLine($"• <b>{EscapeHtml(FormatMoney(offer.Price, currency))}</b> — {EscapeHtml(offerSeller)}{star}");
         }
         if (offers.Count > 5)
             sb.AppendLine($"  <i>+{offers.Count - 5} teklif daha…</i>");
