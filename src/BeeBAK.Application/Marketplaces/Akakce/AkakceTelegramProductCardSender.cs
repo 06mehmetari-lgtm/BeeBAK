@@ -59,7 +59,6 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
             || !string.IsNullOrWhiteSpace(o.OfferUrl))
             ?? offers[0];
 
-        // Tüm satıcıları yükle
         var merchantIds = offers.Select(o => o.MerchantId).Distinct().ToList();
         var merchantsList = await _merchantRepository.GetListAsync(
             m => merchantIds.Contains(m.Id), cancellationToken: cancellationToken);
@@ -68,7 +67,6 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         merchantsById.TryGetValue(cheapest.MerchantId, out var merchantName);
         merchantName ??= cheapest.SellerName?.Trim() ?? cheapest.OfferTitle?.Trim();
 
-        // Ana CTA butonu için URL — Akakce redirect kullanma
         var bestUrl    = PickBestUrl(cheapest, product.ProductUrl);
         var buttonText = IsMerchantDirectUrl(bestUrl) ? "🛒 Ürüne Git →" : "🔗 Tüm teklifleri gör →";
         var replyMarkup = new
@@ -103,49 +101,59 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         var lowest   = cheapest.Price;
         var currency = string.IsNullOrWhiteSpace(cheapest.Currency) ? "TRY" : cheapest.Currency.Trim();
 
-        // Referans fiyat: en yüksek teklif (2+ varsa) veya önceki fiyat
-        decimal? marketPrice = null;
-        if (offers.Count >= 2)
-        {
-            var maxOffer = offers.Max(o => o.Price);
-            if (maxOffer > lowest) marketPrice = maxOffer;
-        }
-        if (!marketPrice.HasValue && product.PreviousPriceAmount is > 0 && product.PreviousPriceAmount > lowest)
-            marketPrice = product.PreviousPriceAmount.Value;
-
+        // İndirim yüzdesi: tüm tekliflerin ORTALAMASI baz alınır
         decimal? discountPct = null;
-        if (marketPrice.HasValue && marketPrice.Value > 0)
-            discountPct = Math.Round((marketPrice.Value - lowest) / marketPrice.Value * 100m);
+        if (offers.Count > 1)
+        {
+            var avg = offers.Average(o => o.Price);
+            if (avg > lowest)
+                discountPct = Math.Round((avg - lowest) / avg * 100m);
+        }
+        else if (product.PreviousPriceAmount is > 0 && product.PreviousPriceAmount > lowest)
+        {
+            discountPct = Math.Round((product.PreviousPriceAmount.Value - lowest) / product.PreviousPriceAmount.Value * 100m);
+        }
 
         var sb = new StringBuilder();
 
+        // ── Başlık ───────────────────────────────────────────────────────────
         var header = triggerType switch
         {
-            "price_drop"  => "💸 Fiyat düştü",
-            "discount_up" => "📉 İndirim arttı",
-            _ when discountPct >= 40 => "🔥 Fiyat ciddi seviyeye geriledi",
-            _ when discountPct >= 20 => "🛒 Fiyat avantajı var",
-            _             => "🐝 BeeBak Sana — Fırsat",
+            "price_drop"  => "🚨 FİYAT DÜŞTÜ",
+            "discount_up" => "📉 İNDİRİM ARTTI",
+            _ when discountPct >= 50 => "🔥 BÜYÜK FIRSAT YAKALANDI",
+            _ when discountPct >= 20 => "🚨 FIRSAT YAKALANDI",
+            _             => "🚨 FIRSAT YAKALANDI",
         };
         sb.AppendLine($"<b>{EscapeHtml(header)}</b>");
         sb.AppendLine();
 
+        // ── Ürün başlığı ─────────────────────────────────────────────────────
         sb.AppendLine($"<b>{EscapeHtml(product.Title.Trim())}</b>");
         sb.AppendLine();
 
-        // En ucuz teklif — öne çıkarılmış blok (link caption'da değil, inline button'da)
-        sb.AppendLine("━━━━━━━━━━━━━━━━━━━━");
-        sb.AppendLine($"🥇 <b>{EscapeHtml(FormatMoney(lowest, currency))}</b>");
+        // ── En ucuz teklif kutusu ────────────────────────────────────────────
+        sb.AppendLine("╭──────────────────────");
+        sb.AppendLine("💰 <b>EN DÜŞÜK FİYAT</b>");
+        sb.AppendLine($"<b>{EscapeHtml(FormatMoney(lowest, currency))}</b>");
         if (!string.IsNullOrWhiteSpace(merchantName))
-            sb.AppendLine($"   <b>{EscapeHtml(merchantName.Trim())}</b>");
+            sb.AppendLine($"🏪 <b>{EscapeHtml(merchantName.Trim())}</b>");
+        sb.AppendLine("╰──────────────────────");
+        sb.AppendLine();
+
+        // ── Buton işareti (inline keyboard'a yönlendirir) ────────────────────
+        sb.AppendLine("👇 <i>Aşağıdaki butona tıklayın</i>");
+        sb.AppendLine();
+
+        // ── Ayraç ────────────────────────────────────────────────────────────
         sb.AppendLine("━━━━━━━━━━━━━━━━━━━━");
         sb.AppendLine();
 
-        // Diğer tüm teklifler — varsa doğrudan mağaza linki
+        // ── Diğer teklifler ──────────────────────────────────────────────────
         var otherOffers = offers.Where(o => o.Price != lowest || o.MerchantId != cheapest.MerchantId).ToList();
         if (otherOffers.Count > 0)
         {
-            sb.AppendLine("📋 <b>Diğer Teklifler:</b>");
+            sb.AppendLine("📊 <b>Diğer Teklifler</b>");
             foreach (var offer in otherOffers)
             {
                 merchantsById.TryGetValue(offer.MerchantId, out var offerSeller);
@@ -154,25 +162,26 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
                            ?? offer.OfferTitle?.Trim()
                            ?? "Satıcı";
 
-                var priceStr = EscapeHtml(FormatMoney(offer.Price, currency));
+                var priceStr  = EscapeHtml(FormatMoney(offer.Price, currency));
                 var sellerStr = EscapeHtml(offerSeller);
                 var directUrl = offer.MerchantProductUrl?.Trim();
 
                 if (!string.IsNullOrWhiteSpace(directUrl))
-                    sb.AppendLine($"• <a href=\"{EscapeAttr(directUrl)}\">{priceStr}</a> — {sellerStr}");
+                    sb.AppendLine($"• <a href=\"{EscapeAttr(directUrl)}\">{priceStr} — {sellerStr}</a>");
                 else
                     sb.AppendLine($"• {priceStr} — {sellerStr}");
             }
             sb.AppendLine();
         }
 
+        // ── Ortalama karşılaştırması ─────────────────────────────────────────
         if (discountPct is > 0)
         {
-            sb.AppendLine($"📉 En ucuz teklif yaklaşık %{(int)discountPct.Value} daha avantajlı");
+            sb.AppendLine($"📉 Piyasa ortalamasından %{(int)discountPct.Value} daha avantajlı");
             sb.AppendLine();
         }
 
-        sb.Append("<i>⏳ Stok ve fiyat kısa sürede değişebilir.</i>");
+        sb.Append("⚠️ <i>Stok ve fiyat kısa sürede değişebilir.</i>");
 
         return sb.ToString().TrimEnd();
     }
@@ -289,7 +298,8 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
 
     private static string FormatMoney(decimal amount, string currency)
     {
-        try { return amount.ToString("N2", Tr) + " " + currency.ToUpperInvariant(); }
-        catch { return $"{amount:0.##} {currency}"; }
+        var display = currency.Equals("TRY", StringComparison.OrdinalIgnoreCase) ? "TL" : currency.ToUpperInvariant();
+        try { return amount.ToString("N2", Tr) + " " + display; }
+        catch { return $"{amount:0.##} {display}"; }
     }
 }
