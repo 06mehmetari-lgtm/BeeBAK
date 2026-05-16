@@ -142,15 +142,8 @@ public class AkakceProductIngestionService : DomainService
                 var currentDiscount = card.DiscountPercent ?? product.DiscountPercent;
 
                 var minDiscount = _options.CurrentValue.Publish.MinDiscountPercent;
-
-                var isNew        = existing == null;
-                var isPriceDrop  = prevBestPrice.HasValue && prevBestPrice.Value > 0m
-                                   && currentPrice < prevBestPrice.Value * 0.97m;
-                var isDiscountUp = prevDiscountPct.HasValue && currentDiscount.HasValue
-                                   && currentDiscount.Value > prevDiscountPct.Value + 2m;
-
-                // Yalnızca: yeni ürün (yeterli indirimli) VEYA fiyat düştü VEYA indirim arttı
-                if ((isNew && currentDiscount >= minDiscount) || isPriceDrop || isDiscountUp)
+                if (currentDiscount >= minDiscount
+                    || (prevBestPrice.HasValue && currentPrice < prevBestPrice.Value * 0.97m))
                 {
                     var triggerType = DetermineTriggerType(currentPrice, currentDiscount, prevBestPrice, prevDiscountPct, existing == null);
                     var score = ComputeScore(currentDiscount, triggerType);
