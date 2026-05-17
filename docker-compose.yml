@@ -272,6 +272,11 @@ services:
       Akakce__AutoSync__CategoryUrls__7: "https://www.akakce.com/fark-atan-fiyatlar/?c=1"
       Akakce__AutoSync__CategoryUrls__8: "https://www.akakce.com/fark-atan-fiyatlar/?c=2"
       Akakce__AutoSync__CategoryUrls__9: "https://www.akakce.com/fark-atan-fiyatlar/?c=4"
+      Akakce__AutoSync__CategoryUrls__10: "https://www.akakce.com/fark-atan-fiyatlar/?c=9"
+      Akakce__AutoSync__CategoryUrls__11: "https://www.akakce.com/fark-atan-fiyatlar/?c=7"
+      Akakce__AutoSync__CategoryUrls__12: "https://www.akakce.com/fark-atan-fiyatlar/?c=3"
+      Akakce__AutoSync__CategoryUrls__13: "https://www.akakce.com/fiyati-dusen-urunler/?c=3&s=3"
+      Akakce__AutoSync__CategoryUrls__14: "https://www.akakce.com/adetli-al-az-ode/"
       # ── Akakce PriceWatch ───────────────────────────────────────────────
       Akakce__PriceWatch__Enabled: "true"
       Akakce__PriceWatch__IntervalMinutes: "60"
