@@ -277,6 +277,7 @@ services:
       Akakce__AutoSync__CategoryUrls__12: "https://www.akakce.com/fark-atan-fiyatlar/?c=3"
       Akakce__AutoSync__CategoryUrls__13: "https://www.akakce.com/fiyati-dusen-urunler/?c=3&s=3"
       Akakce__AutoSync__CategoryUrls__14: "https://www.akakce.com/adetli-al-az-ode/"
+      Akakce__AutoSync__CategoryUrls__15: "https://www.akakce.com/brosurlerden-daha-ucuz-fiyatlar/"
       # ── Akakce PriceWatch ───────────────────────────────────────────────
       Akakce__PriceWatch__Enabled: "true"
       Akakce__PriceWatch__IntervalMinutes: "60"
