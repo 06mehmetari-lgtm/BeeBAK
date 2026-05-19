@@ -21,11 +21,9 @@ services:
     image: redis:7-alpine
     container_name: beebak-redis
     restart: always
-    command: redis-server --appendonly yes --appendfsync everysec
+    command: redis-server --appendonly yes --appendfsync everysec --protected-mode yes --bind 127.0.0.1 redis
     volumes:
       - beebak_redis:/data
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
