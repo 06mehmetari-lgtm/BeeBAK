@@ -7,7 +7,6 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using BeeBAK.Marketplaces.Cimri;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Volo.Abp.DependencyInjection;
@@ -17,10 +16,11 @@ namespace BeeBAK.Marketplaces.Akakce;
 
 public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender, ITransientDependency
 {
+    public const string HttpClientName = "CimriTelegramBot";
     private readonly IAkakceProductRepository _productRepository;
     private readonly IRepository<AkakceMerchant, Guid> _merchantRepository;
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly IOptionsMonitor<CimriClientOptions> _cimriOptions;
+    private readonly IOptionsMonitor<AkakceClientOptions> _akakceOptions;
     private readonly ILogger<AkakceTelegramProductCardSender> _logger;
     private static readonly CultureInfo Tr = CultureInfo.GetCultureInfo("tr-TR");
 
@@ -28,13 +28,13 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         IAkakceProductRepository productRepository,
         IRepository<AkakceMerchant, Guid> merchantRepository,
         IHttpClientFactory httpClientFactory,
-        IOptionsMonitor<CimriClientOptions> cimriOptions,
+        IOptionsMonitor<AkakceClientOptions> akakceOptions,
         ILogger<AkakceTelegramProductCardSender> logger)
     {
         _productRepository = productRepository;
         _merchantRepository = merchantRepository;
         _httpClientFactory = httpClientFactory;
-        _cimriOptions = cimriOptions;
+        _akakceOptions = akakceOptions;
         _logger = logger;
     }
 
@@ -43,7 +43,7 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         string triggerType = "new",
         CancellationToken cancellationToken = default)
     {
-        var telegram = _cimriOptions.CurrentValue.Telegram;
+        var telegram = _akakceOptions.CurrentValue.Telegram;
         if (!telegram.ShareProductCardsOnIngest
             || string.IsNullOrWhiteSpace(telegram.BotToken)
             || string.IsNullOrWhiteSpace(telegram.ChatId))
@@ -72,7 +72,7 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         var caption = BuildCaptionHtml(product, offers, cheapest, merchantName, merchantsById, bestUrl, triggerType);
         if (caption.Length > 1024) caption = SafeTruncateHtml(caption, 1021);
 
-        var client = _httpClientFactory.CreateClient(CimriTelegramProductCardSender.HttpClientName);
+        var client = _httpClientFactory.CreateClient(HttpClientName);
         var token  = telegram.BotToken.Trim();
         var chatId = telegram.ChatId.Trim();
 
@@ -204,71 +204,6 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
 
     private static bool IsMerchantDirectUrl(string url) =>
         !url.Contains("akakce.com", StringComparison.OrdinalIgnoreCase);
-
-    private async Task<bool> TrySendRenderedCardAsync(
-        HttpClient client,
-        string botToken, string chatId,
-        AkakceProduct product,
-        System.Collections.Generic.List<AkakceOffer> offers,
-        AkakceOffer cheapest,
-        string? merchantName,
-        string caption,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            var lowest   = cheapest.Price;
-            var currency = string.IsNullOrWhiteSpace(cheapest.Currency) ? "TRY" : cheapest.Currency.Trim();
-
-            decimal? marketPrice = null;
-            if (offers.Count >= 2)
-            {
-                var maxOffer = offers.Max(o => o.Price);
-                if (maxOffer > lowest) marketPrice = maxOffer;
-            }
-            if (!marketPrice.HasValue && product.PreviousPriceAmount is > 0 && product.PreviousPriceAmount > lowest)
-                marketPrice = product.PreviousPriceAmount.Value;
-
-            decimal? discountPct = null;
-            if (marketPrice.HasValue && marketPrice.Value > 0)
-                discountPct = Math.Round((marketPrice.Value - lowest) / marketPrice.Value * 100m);
-
-            var themeIndex = Math.Abs(product.ProductCode.GetHashCode()) % 4;
-
-            var cardBytes = await CimriCardImageGenerator.GenerateAsync(
-                product.Title?.Trim() ?? "",
-                product.PrimaryImageUrl?.Trim(),
-                lowest, null, marketPrice, currency,
-                merchantName?.Trim(),
-                discountPct,
-                themeIndex,
-                client,
-                cancellationToken);
-
-            var tgUrl = $"https://api.telegram.org/bot{botToken}/sendPhoto";
-            using var form = new MultipartFormDataContent();
-            form.Add(new StringContent(chatId), "chat_id");
-            form.Add(new StringContent(caption), "caption");
-            form.Add(new StringContent("HTML"), "parse_mode");
-            var imgContent = new ByteArrayContent(cardBytes);
-            imgContent.Headers.ContentType = new MediaTypeHeaderValue("image/png");
-            form.Add(imgContent, "photo", $"card_{product.ProductCode}.png");
-
-            using var response = await client.PostAsync(tgUrl, form, cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                var body = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogDebug("Akakce Telegram sendPhoto (card) HTTP {Status}: {Body}", response.StatusCode, body);
-                return false;
-            }
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Akakce kart render/upload başarısız, fallback'e geçiliyor");
-            return false;
-        }
-    }
 
     private async Task<bool> TrySendPhotoAsync(
         HttpClient client, string botToken, string chatId,

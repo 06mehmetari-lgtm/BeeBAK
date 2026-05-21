@@ -48,6 +48,7 @@ public class AkakceClientOptions
     public AkakceAutoSyncOptions AutoSync { get; set; } = new();
     public AkakcePriceWatchOptions PriceWatch { get; set; } = new();
     public AkakcePublishOptions Publish { get; set; } = new();
+    public AkakceTelegramOptions Telegram { get; set; } = new();
 }
 
 public class AkakceAutoSyncOptions
@@ -79,4 +80,13 @@ public class AkakcePublishOptions
     public decimal MinDiscountPercent { get; set; } = 10m;
     public int QuietStartHour { get; set; } = 2;
     public int QuietEndHour { get; set; } = 8;
+}
+
+public class AkakceTelegramOptions
+{
+    public string? BotToken { get; set; }
+    public string? ChatId { get; set; }
+    public bool ShareProductCardsOnIngest { get; set; } = true;
+    public decimal MinDiscountPercentForTelegram { get; set; } = 5m;
+    public int TelegramCardDedupHours { get; set; } = 0;
 }

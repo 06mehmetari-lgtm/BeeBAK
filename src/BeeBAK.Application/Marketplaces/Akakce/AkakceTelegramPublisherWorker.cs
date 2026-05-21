@@ -3,7 +3,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using BeeBAK.Ecommerce;
 using BeeBAK.Marketplaces;
-using BeeBAK.Marketplaces.Cimri;
 using BeeBAK.Marketplaces.Monitor;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.DependencyInjection;
@@ -50,8 +49,8 @@ public class AkakceTelegramPublisherWorker : AsyncPeriodicBackgroundWorkerBase
     private async Task RunAsync(PeriodicBackgroundWorkerContext ctx)
     {
         var sp      = ctx.ServiceProvider;
-        var telegram = sp.GetRequiredService<IOptionsMonitor<CimriClientOptions>>().CurrentValue.Telegram;
         var akakce  = sp.GetRequiredService<IOptionsMonitor<AkakceClientOptions>>().CurrentValue;
+        var telegram = akakce.Telegram;
         var pub     = akakce.Publish;
 
         if (!telegram.ShareProductCardsOnIngest) return;

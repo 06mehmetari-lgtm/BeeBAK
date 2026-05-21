@@ -29,8 +29,8 @@ namespace BeeBAK;
 public class SystemHealthWorker : AsyncPeriodicBackgroundWorkerBase
 {
     private const string HeartbeatKey      = "beebak:system:health:heartbeat";
-    private const string LastSendKeyTg     = "beebak:tg:last-send-unix";
-    private const string TgQueueKey        = "beebak:tg:queue:v2";
+    private const string LastSendKeyTg     = "beebak:tg:akakce:last-send-unix";
+    private const string TgQueueKey        = "beebak:tg:akakce:queue:v1";
     private const string CimriCdPrefix     = "beebak:cimri:url:cd:";
     private const string AkakceCdPrefix    = "beebak:akakce:url:cd:";
 
