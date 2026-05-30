@@ -245,7 +245,6 @@ services:
       Akakce__ScrollPauseMs: "100"
       Akakce__ListingWaitTimeoutMs: "25000"
       Akakce__DetailWaitTimeoutMs: "10000"
-      Akakce__DelayBetweenProductsMs: "0"
       # ── RabbitMQ iş işleme ───────────────────────────────────────────────
       RabbitMq__BackgroundJobs__PrefetchCount: "6"
       # ── Telegram ────────────────────────────────────────────────────────
