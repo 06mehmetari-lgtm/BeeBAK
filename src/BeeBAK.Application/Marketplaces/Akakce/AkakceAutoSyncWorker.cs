@@ -100,6 +100,10 @@ public class AkakceAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
         catch (Exception ex) { logger.LogWarning(ex, "AkakceAutoSync: self-heal hatası."); }
 
         var allUrls   = GetAllListingUrls(options);
+
+        // Karışık sırada işle — farklı kategorilerden ürün çeşitliliği için
+        allUrls = allUrls.OrderBy(_ => Random.Shared.Next()).ToList();
+
         var cooldownM = options.AutoSync.UrlCooldownMinutes > 0
             ? options.AutoSync.UrlCooldownMinutes
             : options.AutoSync.CategoryIntervalMinutes > 0
