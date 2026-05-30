@@ -296,6 +296,9 @@ services:
       # ── Pijama kategorisi ────────────────────────────────────────────────
       Akakce__AutoSync__CategoryUrls__32: "https://www.akakce.com/pijama.html"
       Akakce__AutoSync__CategoryUrls__33: "https://www.akakce.com/pijama,2.html"
+      # ── Tayt kategorisi ──────────────────────────────────────────────────
+      Akakce__AutoSync__CategoryUrls__34: "https://www.akakce.com/tayt.html"
+      Akakce__AutoSync__CategoryUrls__35: "https://www.akakce.com/tayt,2.html"
       # ── Akakce PriceWatch ───────────────────────────────────────────────
       Akakce__PriceWatch__Enabled: "true"
       Akakce__PriceWatch__IntervalMinutes: "60"
