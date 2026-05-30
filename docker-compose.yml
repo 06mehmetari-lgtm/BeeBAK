@@ -299,6 +299,9 @@ services:
       # ── Tayt kategorisi ──────────────────────────────────────────────────
       Akakce__AutoSync__CategoryUrls__34: "https://www.akakce.com/tayt.html"
       Akakce__AutoSync__CategoryUrls__35: "https://www.akakce.com/tayt,2.html"
+      # ── Şık tesettür takım kategorisi ───────────────────────────────────
+      Akakce__AutoSync__CategoryUrls__36: "https://www.akakce.com/tesettur-takim/sik-tesettur-takim.html"
+      Akakce__AutoSync__CategoryUrls__37: "https://www.akakce.com/tesettur-takim/sik-tesettur-takim,2.html"
       # ── Akakce PriceWatch ───────────────────────────────────────────────
       Akakce__PriceWatch__Enabled: "true"
       Akakce__PriceWatch__IntervalMinutes: "60"
