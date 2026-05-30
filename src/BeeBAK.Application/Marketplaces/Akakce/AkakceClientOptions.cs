@@ -82,6 +82,8 @@ public class AkakcePublishOptions
     public int MinDelayMinutes { get; set; } = 6;
     public int MaxDelayMinutes { get; set; } = 14;
     public decimal MinDiscountPercent { get; set; } = 10m;
+    /// <summary>Telegram'a göndermek için minimum fırsat skoru (0–10). 0 = filtre yok.</summary>
+    public decimal MinPublishScore { get; set; } = 0m;
     public int QuietStartHour { get; set; } = 2;
     public int QuietEndHour { get; set; } = 8;
 }

@@ -957,6 +957,7 @@ services:
       Akakce__Publish__MinDelayMinutes: "2"
       Akakce__Publish__MaxDelayMinutes: "5"
       Akakce__Publish__MinDiscountPercent: "25"
+      Akakce__Publish__MinPublishScore: "5"
       Akakce__Publish__QuietStartHour: "3"
       Akakce__Publish__QuietEndHour: "6"
 

@@ -81,6 +81,15 @@ public class AkakceTelegramPublisherWorker : AsyncPeriodicBackgroundWorkerBase
         var entry = await queue.DequeueTopAsync(avoidMerchant: lastMerchant);
         if (entry == null) return;
 
+        // Skor filtresi — eşiğin altındaki işler (eski birikmiş dahil) direkt atılır
+        var minPublishScore = pub.MinPublishScore;
+        if (minPublishScore > 0 && entry.DisplayScore < minPublishScore)
+        {
+            logger.LogDebug("Akakce publisher: fırsat skoru yetersiz ({Score}/10 < {Min}/10), atılıyor ({ProductCode})",
+                entry.DisplayScore, minPublishScore, entry.ProductCode);
+            return;
+        }
+
         if (isQuiet && entry.Score < 100)
         {
             await queue.EnqueueAsync(entry);

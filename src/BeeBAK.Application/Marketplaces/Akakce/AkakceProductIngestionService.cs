@@ -152,11 +152,18 @@ public class AkakceProductIngestionService : DomainService
                 // Minimum indirim eşiği sağlanmalı; ardından yeni ürün / fiyat düşüşü / indirim artışı
                 if (currentDiscount >= minDiscount && (isNew || isPriceDrop || isDiscountUp))
                 {
-                    var triggerType = DetermineTriggerType(currentPrice, currentDiscount, prevBestPrice, prevDiscountPct, existing == null);
-                    var score = ComputeScore(currentDiscount, triggerType);
+                    var triggerType  = DetermineTriggerType(currentPrice, currentDiscount, prevBestPrice, prevDiscountPct, existing == null);
+                    var score        = ComputeScore(currentDiscount, triggerType);
+                    var displayScore = ComputeDisplayScore(currentDiscount ?? 0m, offersAdded, triggerType);
 
+                    var minPublishScore = _options.CurrentValue.Publish.MinPublishScore;
+                    if (minPublishScore > 0 && displayScore < minPublishScore)
+                    {
+                        _logger.LogDebug("Akakce: fırsat skoru yetersiz ({Score}/10 < {Min}/10), kuyruklanmadı ({ProductCode})",
+                            displayScore, minPublishScore, card.ProductCode);
+                    }
                     // Kitap kategorisi Telegram'a gönderilmez
-                    if (TelegramCategoryFilter.IsBlocked(detail.CategoryPath, card.Title))
+                    else if (TelegramCategoryFilter.IsBlocked(detail.CategoryPath, card.Title))
                     {
                         _logger.LogDebug("Akakce: kitap/engelli kategori, kuyruklanmadı ({ProductCode})", card.ProductCode);
                     }
@@ -174,6 +181,7 @@ public class AkakceProductIngestionService : DomainService
                             Title           = card.Title,
                             TriggerType     = triggerType,
                             Score           = score,
+                            DisplayScore    = displayScore,
                             LowestPrice     = currentPrice,
                             PreviousPrice   = prevBestPrice,
                             DiscountPercent = currentDiscount,
@@ -207,6 +215,14 @@ public class AkakceProductIngestionService : DomainService
         double score = discountPercent >= 50m ? 100 : discountPercent >= 25m ? 70 : discountPercent >= 10m ? 40 : 10;
         score += triggerType switch { "price_drop" => 30, "discount_up" => 25, _ => 0 };
         return score;
+    }
+
+    private static decimal ComputeDisplayScore(decimal discountPct, int offerCount, string triggerType)
+    {
+        var s = Math.Min(discountPct / 10m, 7.0m);
+        s += offerCount switch { >= 5 => 1.5m, >= 3 => 1.0m, >= 2 => 0.5m, _ => 0m };
+        s += triggerType switch { "price_drop" => 1.5m, "discount_up" => 0.5m, _ => 0m };
+        return Math.Min(Math.Round(s, 1), 10m);
     }
 
     private async Task<AkakceIngestionResult> PersistListingSnapshotOnlyAsync(

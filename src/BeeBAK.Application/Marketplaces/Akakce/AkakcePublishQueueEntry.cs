@@ -11,6 +11,8 @@ public class AkakcePublishQueueEntry
 
     public string TriggerType { get; set; } = "new";
     public double Score { get; set; }
+    /// <summary>Telegram mesajında gösterilen 0–10 fırsat skoru. Filtre için kullanılır.</summary>
+    public decimal DisplayScore { get; set; }
     public decimal LowestPrice { get; set; }
     public decimal? PreviousPrice { get; set; }
     public decimal? DiscountPercent { get; set; }
