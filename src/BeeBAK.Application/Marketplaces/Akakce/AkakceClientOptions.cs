@@ -61,6 +61,10 @@ public class AkakceAutoSyncOptions
     public List<string> CategoryUrls { get; set; } = new();
     public int MaxPages { get; set; } = 10;
     public int MaxProducts { get; set; } = 500;
+    /// <summary>Her tur en fazla bu kadar URL kuyruğa alınır (0 = sınırsız).</summary>
+    public int MaxUrlsPerRun { get; set; } = 0;
+    /// <summary>Bir URL enqueue edildikten sonra tekrar alınmadan önce beklenen süre (dk). 0 = CategoryIntervalMinutes×2.</summary>
+    public int UrlCooldownMinutes { get; set; } = 0;
 }
 
 public class AkakcePriceWatchOptions

@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Volo.Abp.BackgroundJobs;
 
 namespace BeeBAK.Marketplaces.Akakce.Jobs;
@@ -9,13 +10,16 @@ public class AkakceProductDetailBatchJob : AsyncBackgroundJob<AkakceProductDetai
 {
     private readonly AkakceProductDetailJob _detailJob;
     private readonly ILogger<AkakceProductDetailBatchJob> _logger;
+    private readonly IOptionsMonitor<AkakceClientOptions> _options;
 
     public AkakceProductDetailBatchJob(
         AkakceProductDetailJob detailJob,
-        ILogger<AkakceProductDetailBatchJob> logger)
+        ILogger<AkakceProductDetailBatchJob> logger,
+        IOptionsMonitor<AkakceClientOptions> options)
     {
         _detailJob = detailJob;
         _logger = logger;
+        _options = options;
     }
 
     public override async Task ExecuteAsync(AkakceProductDetailBatchJobArgs args)
@@ -24,6 +28,8 @@ public class AkakceProductDetailBatchJob : AsyncBackgroundJob<AkakceProductDetai
         {
             return;
         }
+
+        var delayMs = Math.Max(0, _options.CurrentValue.DelayBetweenProductsMs);
 
         for (var i = 0; i < args.Items.Count; i++)
         {
@@ -49,6 +55,9 @@ public class AkakceProductDetailBatchJob : AsyncBackgroundJob<AkakceProductDetai
                     "Akakce batch item skipped (runId={RunId}, index={Index}/{Total}, productCode={ProductCode})",
                     args.ScrapeRunId, i + 1, args.Items.Count, item.ProductCode);
             }
+
+            if (delayMs > 0 && i < args.Items.Count - 1)
+                await Task.Delay(delayMs);
         }
     }
 }

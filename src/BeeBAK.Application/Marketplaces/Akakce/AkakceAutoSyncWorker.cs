@@ -100,12 +100,15 @@ public class AkakceAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
         catch (Exception ex) { logger.LogWarning(ex, "AkakceAutoSync: self-heal hatası."); }
 
         var allUrls   = GetAllListingUrls(options);
-        var cooldownM = options.AutoSync.CategoryIntervalMinutes > 0
-            ? options.AutoSync.CategoryIntervalMinutes * 2
-            : (int)TimeSpan.FromHours(options.AutoSync.IntervalHours).TotalMinutes;
+        var cooldownM = options.AutoSync.UrlCooldownMinutes > 0
+            ? options.AutoSync.UrlCooldownMinutes
+            : options.AutoSync.CategoryIntervalMinutes > 0
+                ? options.AutoSync.CategoryIntervalMinutes * 2
+                : (int)TimeSpan.FromHours(options.AutoSync.IntervalHours).TotalMinutes;
 
-        var maxPages    = Math.Max(1, options.AutoSync.MaxPages);
-        var maxProducts = Math.Max(1, options.AutoSync.MaxProducts);
+        var maxPages       = Math.Max(1, options.AutoSync.MaxPages);
+        var maxProducts    = Math.Max(1, options.AutoSync.MaxProducts);
+        var maxUrlsPerRun  = options.AutoSync.MaxUrlsPerRun > 0 ? options.AutoSync.MaxUrlsPerRun : int.MaxValue;
 
         var guidGenerator = sp.GetRequiredService<IGuidGenerator>();
         var jobManager    = sp.GetRequiredService<IBackgroundJobManager>();
@@ -158,6 +161,12 @@ public class AkakceAutoSyncWorker : AsyncPeriodicBackgroundWorkerBase
             await EnqueueUrlAsync(sp, url, maxPages, maxProducts,
                 scrapeRunRepo, uowManager, clock, guidGenerator, jobManager, logger);
             enqueued++;
+
+            if (enqueued >= maxUrlsPerRun)
+            {
+                logger.LogDebug("AkakceAutoSync: tur limiti doldu ({Max} URL) — kalan URL'ler sonraki tura bırakıldı.", maxUrlsPerRun);
+                break;
+            }
         }
 
         if (enqueued > 0)
