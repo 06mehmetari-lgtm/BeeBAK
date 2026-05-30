@@ -149,8 +149,8 @@ public class AkakceProductIngestionService : DomainService
                 var isDiscountUp = prevDiscountPct.HasValue && currentDiscount.HasValue
                                    && currentDiscount.Value > prevDiscountPct.Value + 2m;
 
-                // Yeni ürün (yeterli indirimli) VEYA fiyat %3+ düştü VEYA indirim %2+ arttı
-                if ((isNew && currentDiscount >= minDiscount) || isPriceDrop || isDiscountUp)
+                // Minimum indirim eşiği sağlanmalı; ardından yeni ürün / fiyat düşüşü / indirim artışı
+                if (currentDiscount >= minDiscount && (isNew || isPriceDrop || isDiscountUp))
                 {
                     var triggerType = DetermineTriggerType(currentPrice, currentDiscount, prevBestPrice, prevDiscountPct, existing == null);
                     var score = ComputeScore(currentDiscount, triggerType);

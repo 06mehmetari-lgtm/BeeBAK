@@ -143,7 +143,7 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
             sb.AppendLine($"💸 ≈ {EscapeHtml(FormatMoney(avgPrice.Value - lowest, currency))} tasarruf");
         if (discountPct is > 0)
         {
-            var score = Math.Min(Math.Round(discountPct.Value / 10m, 1), 10m);
+            var score = ComputeDisplayScore(discountPct.Value, offers.Count, triggerType);
             sb.AppendLine($"🧠 Fırsat Skoru: {score.ToString("0.#", Tr)} / 10");
         }
         if (cheapest.ScrapedUtc != default)
@@ -196,6 +196,35 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
             sb.Append($"📉 Piyasa ortalamasından %{(int)discountPct.Value} daha avantajlı");
 
         return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// 0–10 arası fırsat skoru.
+    /// Baz: indirim% / 10 (max 7) | Satıcı sayısı bonusu: max 1.5 | Tetikleyici bonusu: max 1.5
+    /// </summary>
+    private static decimal ComputeDisplayScore(decimal discountPct, int offerCount, string triggerType)
+    {
+        // Baz puan: indirim yüzdesi / 10, en fazla 7.0
+        var score = Math.Min(discountPct / 10m, 7.0m);
+
+        // Satıcı sayısı bonusu — rakabet fazlaysa fiyat daha güvenilir
+        score += offerCount switch
+        {
+            >= 5 => 1.5m,
+            >= 3 => 1.0m,
+            >= 2 => 0.5m,
+            _    => 0m,
+        };
+
+        // Tetikleyici bonusu — fiyat düşüşü daha değerli
+        score += triggerType switch
+        {
+            "price_drop"  => 1.5m,
+            "discount_up" => 0.5m,
+            _             => 0m,
+        };
+
+        return Math.Min(Math.Round(score, 1), 10m);
     }
 
     private static string PickBestUrl(AkakceOffer offer, string productUrl)

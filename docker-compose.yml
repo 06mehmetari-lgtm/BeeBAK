@@ -251,7 +251,7 @@ services:
       Akakce__Telegram__BotToken: "8754349662:AAGQ7d4VOGav9lL6bx_kqzS2xboBxdHEmVg"
       Akakce__Telegram__ChatId: "-1003740852935"
       Akakce__Telegram__ShareProductCardsOnIngest: "true"
-      Akakce__Telegram__MinDiscountPercentForTelegram: "5"
+      Akakce__Telegram__MinDiscountPercentForTelegram: "25"
       Akakce__Telegram__TelegramCardDedupHours: "0"
       # ── Akakce AutoSync — fiyati-dusen-urunler kategorileri (test edilmiş, çalışıyor) ──
       Akakce__AutoSync__Enabled: "true"
@@ -286,7 +286,7 @@ services:
       # ── Akakce Publish ──────────────────────────────────────────────────
       Akakce__Publish__MinDelayMinutes: "2"
       Akakce__Publish__MaxDelayMinutes: "5"
-      Akakce__Publish__MinDiscountPercent: "5"
+      Akakce__Publish__MinDiscountPercent: "25"
       Akakce__Publish__QuietStartHour: "3"
       Akakce__Publish__QuietEndHour: "6"
 
