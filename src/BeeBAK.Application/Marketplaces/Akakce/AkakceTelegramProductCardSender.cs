@@ -16,7 +16,8 @@ namespace BeeBAK.Marketplaces.Akakce;
 
 public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender, ITransientDependency
 {
-    public const string HttpClientName = "CimriTelegramBot";
+    public const string HttpClientName            = "CimriTelegramBot";
+    public const string RedirectResolverClientName = "AkakceRedirectResolver";
     private readonly IAkakceProductRepository _productRepository;
     private readonly IRepository<AkakceMerchant, Guid> _merchantRepository;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -67,7 +68,8 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
         merchantsById.TryGetValue(cheapest.MerchantId, out var merchantName);
         merchantName ??= cheapest.SellerName?.Trim() ?? cheapest.OfferTitle?.Trim();
 
-        var bestUrl    = PickBestUrl(cheapest, product.ProductUrl);
+        var bestUrl = PickBestUrl(cheapest, product.ProductUrl);
+        bestUrl = await ResolveDirectUrlAsync(bestUrl, cancellationToken);
 
         var caption = BuildCaptionHtml(product, offers, cheapest, merchantName, merchantsById, bestUrl, triggerType);
         if (caption.Length > 1024) caption = SafeTruncateHtml(caption, 1021);
@@ -204,6 +206,38 @@ public class AkakceTelegramProductCardSender : IAkakceTelegramProductCardSender,
 
     private static bool IsMerchantDirectUrl(string url) =>
         !url.Contains("akakce.com", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Akakce yönlendirme URL'sini (/c/? veya /r/?) takip ederek gerçek satıcı URL'sini döner.
+    /// Hata olursa veya zaten Akakce dışı URL ise orijinali döner.
+    /// </summary>
+    private async Task<string> ResolveDirectUrlAsync(string url, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(url)
+            || !url.Contains("akakce.com", StringComparison.OrdinalIgnoreCase))
+            return url;
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient(RedirectResolverClientName);
+            using var req = new HttpRequestMessage(HttpMethod.Head, url);
+            using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+
+            var finalUrl = resp.RequestMessage?.RequestUri?.ToString();
+            if (!string.IsNullOrWhiteSpace(finalUrl)
+                && !finalUrl.Contains("akakce.com", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogDebug("Akakce redirect çözümlendi: {From} → {To}", url, finalUrl);
+                return finalUrl;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Akakce redirect çözümlenemedi, orijinal URL kullanılıyor: {Url}", url);
+        }
+
+        return url;
+    }
 
     private async Task<bool> TrySendPhotoAsync(
         HttpClient client, string botToken, string chatId,

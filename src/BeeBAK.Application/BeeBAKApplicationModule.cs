@@ -76,6 +76,21 @@ public class BeeBAKApplicationModule : AbpModule
                 AllowAutoRedirect = false,
                 AutomaticDecompression = DecompressionMethods.All,
             });
+
+        // Akakce yönlendirme URL'lerini gerçek satıcı URL'sine çevirmek için
+        context.Services
+            .AddHttpClient(AkakceTelegramProductCardSender.RedirectResolverClientName, client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(7);
+                client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+            {
+                AllowAutoRedirect = true,
+                MaxAutomaticRedirections = 6,
+                AutomaticDecompression = DecompressionMethods.All,
+            });
     }
 
     private void ConfigureDistributedCache(ServiceConfigurationContext context, IConfiguration configuration)
